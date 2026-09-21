@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { Workspace } from "@/lib/auth-session";
 
 export type BusinessProfile = {
   ownerName: string;
@@ -30,7 +31,8 @@ export type BusinessProfile = {
   state: string;
 };
 
-const PROFILE_KEY = "blackfin_business_profile_v1";
+const LEGACY_PROFILE_KEY = "blackfin_business_profile_v1";
+const profileKey = (workspace: Workspace) => `blackfin_${workspace}_profile_v2`;
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -54,9 +56,10 @@ function formatTaxId(value: string) {
     .replace(/(\d{4})(\d)/, "$1-$2");
 }
 
-function readProfile(): BusinessProfile | null {
+function readProfile(workspace: Workspace): BusinessProfile | null {
   try {
-    const value = window.localStorage.getItem(PROFILE_KEY);
+    const value = window.localStorage.getItem(profileKey(workspace)) ??
+      (workspace === "business" ? window.localStorage.getItem(LEGACY_PROFILE_KEY) : null);
     if (!value) return null;
     const profile = JSON.parse(value) as Partial<BusinessProfile>;
     if (!profile.ownerName || !profile.businessName) return null;
@@ -81,13 +84,15 @@ export function AuthFlow({
     profile: BusinessProfile,
     updateProfile: (profile: BusinessProfile) => void,
     logout: () => Promise<void>,
+    workspace: Workspace,
   ) => ReactNode;
 }) {
   const [stage, setStage] = useState<"loading" | "login" | "onboarding" | "app">(
     "loading",
   );
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
-  const [registrationCode, setRegistrationCode] = useState("");
+  const [workspace, setWorkspace] = useState<Workspace>("business");
+  const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -96,14 +101,15 @@ export function AuthFlow({
   useEffect(() => {
     void fetch("/api/auth/session", { cache: "no-store" })
       .then(async (response) =>
-        (await response.json()) as { authenticated?: boolean },
+        (await response.json()) as { authenticated?: boolean; workspace?: Workspace | null },
       )
       .then((result) => {
-        if (!result.authenticated) {
+        if (!result.authenticated || !result.workspace) {
           setStage("login");
           return;
         }
-        const savedProfile = readProfile();
+        setWorkspace(result.workspace);
+        const savedProfile = readProfile(result.workspace);
         setProfile(savedProfile);
         setStage(savedProfile ? "app" : "onboarding");
       })
@@ -118,14 +124,16 @@ export function AuthFlow({
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ registrationCode, password }),
+        body: JSON.stringify({ workspace, login: loginName, password }),
       });
-      const result = (await response.json()) as { error?: string };
+      const result = (await response.json()) as { error?: string; workspace?: Workspace };
       if (!response.ok) {
         setError(result.error ?? "Não foi possível entrar.");
         return;
       }
-      const savedProfile = readProfile();
+      const activeWorkspace = result.workspace ?? workspace;
+      setWorkspace(activeWorkspace);
+      const savedProfile = readProfile(activeWorkspace);
       setProfile(savedProfile);
       setStage(savedProfile ? "app" : "onboarding");
     } catch {
@@ -136,7 +144,7 @@ export function AuthFlow({
   };
 
   const saveProfile = (nextProfile: BusinessProfile) => {
-    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(nextProfile));
+    window.localStorage.setItem(profileKey(workspace), JSON.stringify(nextProfile));
     setProfile(nextProfile);
     setStage("app");
   };
@@ -144,7 +152,7 @@ export function AuthFlow({
   const logout = async () => {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setPassword("");
-    setRegistrationCode("");
+    setLoginName("");
     setStage("login");
   };
 
@@ -174,18 +182,26 @@ export function AuthFlow({
         </div>
         <form className="login-card" onSubmit={login}>
           <p>PORTAL BLACKFIN</p>
-          <h1>Acesse sua operação.</h1>
-          <span>Use o código de registro e a senha de acesso.</span>
+          <h1>Acesse seu ambiente.</h1>
+          <span>Escolha o ambiente e use as credenciais correspondentes.</span>
+          <div className="workspace-selector" aria-label="Escolha do ambiente">
+            <button type="button" className={workspace === "business" ? "active" : ""} onClick={() => { setWorkspace("business"); setError(""); }}>
+              <Building2 /> Empresarial
+            </button>
+            <button type="button" className={workspace === "personal" ? "active" : ""} onClick={() => { setWorkspace("personal"); setError(""); }}>
+              <UserRound /> Pessoal
+            </button>
+          </div>
           <label>
-            Código de registro
+            Código de acesso
             <div className="auth-input-icon">
               <Building2 />
               <Input
                 autoComplete="username"
                 inputMode="numeric"
-                value={registrationCode}
-                onChange={(event) => setRegistrationCode(event.target.value)}
-                placeholder="Digite o código"
+                value={loginName}
+                onChange={(event) => setLoginName(event.target.value)}
+                placeholder="Digite apenas números"
                 required
               />
             </div>
@@ -223,10 +239,41 @@ export function AuthFlow({
   }
 
   if (stage === "onboarding") {
-    return <Onboarding onComplete={saveProfile} />;
+    return workspace === "personal" ? (
+      <PersonalSetup onComplete={saveProfile} />
+    ) : (
+      <Onboarding onComplete={saveProfile} />
+    );
   }
 
-  return profile ? children(profile, saveProfile, logout) : null;
+  return profile ? children(profile, saveProfile, logout, workspace) : null;
+}
+
+function PersonalSetup({ onComplete }: { onComplete: (profile: BusinessProfile) => void }) {
+  const [name, setName] = useState("");
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) return;
+    onComplete({ ownerName: name.trim(), businessName: "Financeiro pessoal", phone: "", email: "", taxId: "", city: "", state: "" });
+  };
+  return (
+    <main className="onboarding-page">
+      <section className="onboarding-shell personal-setup">
+        <aside className="onboarding-aside">
+          <div className="onboarding-brand"><span>BF</span><strong>BLACKFIN</strong></div>
+          <div className="onboarding-aside-copy"><p>AMBIENTE PESSOAL</p><h1>Suas contas, só suas.</h1><span>Este espaço não compartilha lançamentos, comprovantes ou informações com a empresa.</span></div>
+          <div className="onboarding-protected"><ShieldCheck /> Ambiente pessoal protegido</div>
+        </aside>
+        <div className="onboarding-content">
+          <div className="onboarding-copy"><p>PRIMEIRO ACESSO</p><h2>Como podemos chamar você?</h2><span>Você pode mudar estas informações depois.</span></div>
+          <form className="onboarding-form" onSubmit={submit}>
+            <label><span>Seu nome <em>*</em></span><div className="onboarding-input"><UserRound /><Input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Seu nome" required /></div></label>
+            <Button className="gold-button onboarding-submit" type="submit">Entrar no financeiro pessoal <ArrowRight /></Button>
+          </form>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 function Onboarding({

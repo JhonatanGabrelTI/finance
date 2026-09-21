@@ -70,11 +70,12 @@ import {
 } from "@/components/ui/table";
 import { FeaturePage } from "@/components/blackfin-pages";
 import { AuthFlow, type BusinessProfile } from "@/components/auth-flow";
+import type { Workspace } from "@/lib/auth-session";
 
-const nav = [
+const businessNav = [
   ["Dashboard", Gauge, "/dashboard"],
-  ["Meu financeiro", WalletCards, "/financeiro/pessoal"],
-  ["Barbearia", BriefcaseBusiness, "/financeiro/barbearia"],
+  ["Financeiro empresarial", BriefcaseBusiness, "/financeiro/empresarial"],
+  ["Produtos", ReceiptText, "/produtos"],
   ["Movimentações", CreditCard, "/movimentacoes"],
   ["Comprovantes", ReceiptText, "/comprovantes"],
   ["Contas a pagar", CalendarClock, "/contas-pagar"],
@@ -83,6 +84,17 @@ const nav = [
   ["Histórico", FileText, "/historico"],
   ["Barbeiros", UsersRound, "/barbeiros"],
   ["Comissões", TrendingUp, "/comissoes"],
+  ["Insights", Lightbulb, "/insights"],
+] as const;
+const personalNav = [
+  ["Dashboard", Gauge, "/dashboard"],
+  ["Meu financeiro", WalletCards, "/financeiro/pessoal"],
+  ["Movimentações", CreditCard, "/movimentacoes"],
+  ["Comprovantes", ReceiptText, "/comprovantes"],
+  ["Contas a pagar", CalendarClock, "/contas-pagar"],
+  ["Contas a receber", CircleDollarSign, "/contas-receber"],
+  ["Relatórios", BarChart3, "/relatorios"],
+  ["Histórico", FileText, "/historico"],
   ["Insights", Lightbulb, "/insights"],
 ] as const;
 const chartData = [
@@ -131,20 +143,24 @@ function Sidebar({
   currentPath,
   onNavigate,
   profile,
+  workspace,
 }: {
   mobile?: boolean;
   currentPath: string;
   onNavigate: (path: string) => void;
   profile: BusinessProfile;
+  workspace: Workspace;
 }) {
+  const nav = workspace === "business" ? businessNav : personalNav;
+  const workspaceName = workspace === "business" ? profile.businessName : "Financeiro pessoal";
   return (
     <aside className={mobile ? "mobile-sidebar" : "sidebar"}>
       <Brand />
       <div className="workspace-pill">
-        <span>{initials(profile.businessName)}</span>
+        <span>{initials(workspaceName)}</span>
         <div>
-          <strong>{profile.businessName}</strong>
-          <small>Ambiente personalizado</small>
+          <strong>{workspaceName}</strong>
+          <small>{workspace === "business" ? "Ambiente empresarial" : "Ambiente isolado"}</small>
         </div>
         <ChevronDown />
       </div>
@@ -166,7 +182,7 @@ function Sidebar({
           >
             <Icon />
             <span>{label}</span>
-            {index === 4 && <em>2</em>}
+            {workspace === "business" && index === 3 && <em>2</em>}
           </a>
         ))}
       </nav>
@@ -185,7 +201,7 @@ function Sidebar({
           <span>{initials(profile.ownerName)}</span>
           <div>
             <strong>{profile.ownerName}</strong>
-            <small>Proprietário</small>
+            <small>{workspace === "business" ? "Proprietário" : "Conta pessoal"}</small>
           </div>
           <MoreHorizontal />
         </div>
@@ -226,6 +242,7 @@ function TransactionDialog({
   open,
   onOpenChange,
   onSaved,
+  workspace,
 }: {
   open: boolean;
   onOpenChange: (value: boolean) => void;
@@ -237,9 +254,10 @@ function TransactionDialog({
     date: string;
     category: string;
   }) => void;
+  workspace: Workspace;
 }) {
   const [type, setType] = useState<"receita" | "despesa">("receita");
-  const [origin, setOrigin] = useState<"pessoal" | "barbearia">("barbearia");
+  const origin = workspace === "business" ? "barbearia" : "pessoal";
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState("2026-09-20");
@@ -274,8 +292,7 @@ function TransactionDialog({
     "Impostos",
     "Outros",
   ];
-  const categories =
-    origin === "pessoal" ? personalCategories : businessCategories;
+  const categories = workspace === "personal" ? personalCategories : businessCategories;
   const save = () => {
     const numeric = Number(amount.replace(/\./g, "").replace(",", "."));
     if (!numeric || !description.trim() || !date) {
@@ -322,23 +339,8 @@ function TransactionDialog({
         </div>
         <div className="form-grid">
           <label>
-            Origem
-            <Select
-              value={origin}
-              onValueChange={(value) => {
-                const next = value as "pessoal" | "barbearia";
-                setOrigin(next);
-                setCategory(next === "pessoal" ? "Alimentação" : "Serviços");
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="barbearia">Barbearia</SelectItem>
-                <SelectItem value="pessoal">Pessoal</SelectItem>
-              </SelectContent>
-            </Select>
+            Ambiente
+            <Input value={workspace === "business" ? "Empresarial" : "Pessoal"} readOnly />
           </label>
           <label>
             Valor
@@ -400,11 +402,13 @@ function BlackfinWorkspace({
   profile,
   onProfileChange,
   onLogout,
+  workspace,
 }: {
   initialPath?: string;
   profile: BusinessProfile;
   onProfileChange: (profile: BusinessProfile) => void;
   onLogout: () => Promise<void>;
+  workspace: Workspace;
 }) {
   const [period, setPeriod] = useState("7d");
   const [currentPath, setCurrentPath] = useState(
@@ -428,24 +432,25 @@ function BlackfinWorkspace({
   useEffect(() => {
     let stored: typeof addedTransactions = [];
     try {
-      const saved = window.localStorage.getItem("blackfin_transactions_v1");
+      const saved = window.localStorage.getItem(`blackfin_transactions_${workspace}_v2`) ??
+        (workspace === "business" ? window.localStorage.getItem("blackfin_transactions_v1") : null);
       if (saved) stored = JSON.parse(saved) as typeof addedTransactions;
     } catch {
-      window.localStorage.removeItem("blackfin_transactions_v1");
+      window.localStorage.removeItem(`blackfin_transactions_${workspace}_v2`);
     }
     const timer = window.setTimeout(() => {
       setAddedTransactions(stored);
       setTransactionsLoaded(true);
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [workspace]);
   useEffect(() => {
     if (!transactionsLoaded) return;
     window.localStorage.setItem(
-      "blackfin_transactions_v1",
+      `blackfin_transactions_${workspace}_v2`,
       JSON.stringify(addedTransactions),
     );
-  }, [addedTransactions, transactionsLoaded]);
+  }, [addedTransactions, transactionsLoaded, workspace]);
   const liveChart = useMemo(() => {
     const next = chartData.map((item) => ({ ...item }));
     for (const transaction of addedTransactions) {
@@ -547,14 +552,14 @@ function BlackfinWorkspace({
           },
           annotations: { readOnlyHint: true, untrustedContentHint: false },
           execute: () => ({
-            sections: nav.map(([label, , path]) => ({ label, path })),
+            sections: (workspace === "business" ? businessNav : personalNav).map(([label, , path]) => ({ label, path })),
           }),
         },
         { signal: lifecycle.signal },
       ),
     ).catch(() => {});
     return () => lifecycle.abort();
-  }, []);
+  }, [workspace]);
   const navigate = (path: string) => {
     window.history.pushState({}, "", path);
     setCurrentPath(path);
@@ -562,7 +567,7 @@ function BlackfinWorkspace({
   };
   return (
     <div className="app-shell">
-      <Sidebar currentPath={currentPath} onNavigate={navigate} profile={profile} />
+      <Sidebar currentPath={currentPath} onNavigate={navigate} profile={profile} workspace={workspace} />
       <main className="main-panel">
         <header className="topbar">
           <Sheet>
@@ -578,7 +583,7 @@ function BlackfinWorkspace({
                   Navegação do sistema
                 </SheetDescription>
               </SheetHeader>
-              <Sidebar mobile currentPath={currentPath} onNavigate={navigate} profile={profile} />
+              <Sidebar mobile currentPath={currentPath} onNavigate={navigate} profile={profile} workspace={workspace} />
             </SheetContent>
           </Sheet>
           <div className="topbar-search">
@@ -590,7 +595,7 @@ function BlackfinWorkspace({
             <kbd>⌘ K</kbd>
           </div>
           <div className="topbar-actions">
-            <span className="demo-badge">AMBIENTE DE TESTES</span>
+            <span className="demo-badge">{workspace === "business" ? "EMPRESARIAL" : "PESSOAL"}</span>
             <button
               aria-label="Notificações"
               className="notification"
@@ -611,6 +616,7 @@ function BlackfinWorkspace({
             onNewTransaction={() => setDialogOpen(true)}
             profile={profile}
             onProfileChange={onProfileChange}
+            workspace={workspace}
           />
         ) : (
           <div className="dashboard-wrap">
@@ -619,7 +625,7 @@ function BlackfinWorkspace({
                 <p>DOMINGO, 20 DE SETEMBRO</p>
                 <h1>Olá, {profile.ownerName.split(" ")[0]}.</h1>
                 <span>
-                  Acompanhe sua vida financeira e o desempenho da sua barbearia.
+                  {workspace === "business" ? "Acompanhe o desempenho da sua empresa." : "Acompanhe sua vida financeira com privacidade."}
                 </span>
               </div>
               <Button
@@ -647,12 +653,8 @@ function BlackfinWorkspace({
               </div>
               <div className="balance-split">
                 <div>
-                  <small>PESSOAL</small>
-                  <strong>{formatMoney(personalBalance)}</strong>
-                </div>
-                <div>
-                  <small>BARBEARIA</small>
-                  <strong>{formatMoney(businessBalance)}</strong>
+                  <small>{workspace === "business" ? "EMPRESA" : "PESSOAL"}</small>
+                  <strong>{formatMoney(workspace === "business" ? businessBalance : personalBalance)}</strong>
                 </div>
                 <div>
                   <small>RESULTADO DO MÊS</small>
@@ -663,31 +665,19 @@ function BlackfinWorkspace({
             </section>
             <section className="metric-grid">
               <MetricCard
-                eyebrow="Receita da barbearia"
+                eyebrow={workspace === "business" ? "Receita da empresa" : "Receitas pessoais"}
                 value={formatMoney(revenueTotal)}
                 change="Sem receitas"
                 icon={BriefcaseBusiness}
               />
               <MetricCard
-                eyebrow="Despesas da barbearia"
+                eyebrow={workspace === "business" ? "Despesas da empresa" : "Despesas pessoais"}
                 value={formatMoney(expenseTotal)}
                 change="Sem despesas"
                 icon={ArrowDownLeft}
                 tone="red"
               />
-              <MetricCard
-                eyebrow="Receitas pessoais"
-                value="R$ 0,00"
-                change="Sem receitas"
-                icon={ArrowUpRight}
-              />
-              <MetricCard
-                eyebrow="Despesas pessoais"
-                value="R$ 0,00"
-                change="Sem despesas"
-                icon={CreditCard}
-                tone="gold"
-              />
+              <MetricCard eyebrow="Saldo do período" value={formatMoney(consolidated)} change="Sem comparativo" icon={workspace === "business" ? BriefcaseBusiness : WalletCards} tone="gold" />
             </section>
             <section className="content-grid">
               <article className="chart-card">
@@ -852,7 +842,7 @@ function BlackfinWorkspace({
                       icon:
                         item.type === "receita" ? ArrowUpRight : ArrowDownLeft,
                       title: item.description,
-                      meta: `${item.origin === "pessoal" ? "Pessoal" : "Barbearia"} · ${item.category}`,
+                      meta: `${item.origin === "pessoal" ? "Pessoal" : "Empresa"} · ${item.category}`,
                       value: `${item.type === "receita" ? "+" : "−"} ${item.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
                       positive: item.type === "receita",
                     })),
@@ -902,6 +892,7 @@ function BlackfinWorkspace({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onSaved={saveTransaction}
+        workspace={workspace}
       />
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
         <DialogContent className="transaction-dialog notifications-dialog">
@@ -925,12 +916,14 @@ export function BlackfinApp({
 }) {
   return (
     <AuthFlow>
-      {(profile, updateProfile, logout) => (
+      {(profile, updateProfile, logout, workspace) => (
         <BlackfinWorkspace
+          key={workspace}
           initialPath={initialPath}
           profile={profile}
           onProfileChange={updateProfile}
           onLogout={logout}
+          workspace={workspace}
         />
       )}
     </AuthFlow>

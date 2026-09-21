@@ -7,7 +7,8 @@ import {
 } from "@/lib/auth-session";
 
 const inputSchema = z.object({
-  registrationCode: z.string().trim().min(1).max(30),
+  workspace: z.enum(["business", "personal"]),
+  login: z.string().trim().regex(/^\d{6,30}$/, "Use apenas números no código de acesso."),
   password: z.string().min(1).max(100),
 });
 
@@ -16,18 +17,19 @@ export async function POST(request: Request) {
   if (
     !parsed.success ||
     !credentialsAreValid(
-      parsed.data.registrationCode,
+      parsed.data.workspace,
+      parsed.data.login,
       parsed.data.password,
     )
   ) {
     return NextResponse.json(
-      { error: "Código de registro ou senha incorretos." },
+      { error: "Login ou senha incorretos." },
       { status: 401 },
     );
   }
 
-  const response = NextResponse.json({ authenticated: true });
-  response.cookies.set(SESSION_COOKIE, createSessionToken(), {
+  const response = NextResponse.json({ authenticated: true, workspace: parsed.data.workspace });
+  response.cookies.set(SESSION_COOKIE, createSessionToken(parsed.data.workspace), {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

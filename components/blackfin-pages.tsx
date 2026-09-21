@@ -15,6 +15,7 @@ import {
   Download,
   FileSpreadsheet,
   Lightbulb,
+  PackagePlus,
   Plus,
   Search,
   Settings,
@@ -66,12 +67,14 @@ import {
 } from "@/components/ui/table";
 
 import type { BusinessProfile } from "@/components/auth-flow";
+import type { Workspace } from "@/lib/auth-session";
 
 type PageProps = {
   path: string;
   onNewTransaction: () => void;
   profile: BusinessProfile;
   onProfileChange: (profile: BusinessProfile) => void;
+  workspace: Workspace;
 };
 type Tx = {
   date: string;
@@ -260,7 +263,7 @@ function FinancePage({
     <>
       <PageHeader
         eyebrow={business ? "OPERAÇÃO" : "VIDA PESSOAL"}
-        title={business ? "Financeiro da Barbearia" : "Meu financeiro"}
+        title={business ? "Financeiro empresarial" : "Meu financeiro"}
         description={
           business
             ? "Fluxo de caixa, custos e resultado do seu negócio."
@@ -339,14 +342,14 @@ function FinancePage({
       </div>
       <TransactionTable
         rows={txs.filter(
-          (tx) => tx.origin === (business ? "Barbearia" : "Pessoal"),
+          (tx) => tx.origin === (business ? "Empresa" : "Pessoal"),
         )}
       />
     </>
   );
 }
 
-function ReceiptsPage({ onNew }: { onNew: () => void }) {
+function ReceiptsPage({ onNew, workspace }: { onNew: () => void; workspace: Workspace }) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [confirmed, setConfirmed] = useState(false);
@@ -412,16 +415,8 @@ function ReceiptsPage({ onNew }: { onNew: () => void }) {
                 <Input defaultValue="Compra de produtos" />
               </label>
               <label>
-                Origem
-                <Select defaultValue="barbearia">
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="barbearia">Barbearia</SelectItem>
-                    <SelectItem value="pessoal">Pessoal</SelectItem>
-                  </SelectContent>
-                </Select>
+                Ambiente
+                <Input value={workspace === "business" ? "Empresarial" : "Pessoal"} readOnly />
               </label>
               <label>
                 Categoria
@@ -558,7 +553,7 @@ function AccountsPage({ receivable = false }: { receivable?: boolean }) {
   );
 }
 
-function ReportsPage({ profile }: { profile: BusinessProfile }) {
+function ReportsPage({ profile, workspace }: { profile: BusinessProfile; workspace: Workspace }) {
   const [month, setMonth] = useState("setembro-2026");
   const [pdfReady, setPdfReady] = useState(false);
   const months = [
@@ -599,7 +594,7 @@ function ReportsPage({ profile }: { profile: BusinessProfile }) {
     doc.text(label.toUpperCase(), 16, 34);
     doc.setTextColor(25, 25, 25);
     doc.setFontSize(9);
-    doc.text(profile.businessName, 16, 53);
+    doc.text(workspace === "business" ? profile.businessName : profile.ownerName, 16, 53);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
     doc.text("Resumo executivo", 16, 64);
@@ -800,8 +795,9 @@ function ReportsPage({ profile }: { profile: BusinessProfile }) {
           ["Receita mensal", ArrowUpRight],
           ["Fluxo de caixa", TrendingUp],
           ["Gastos por categoria", BarChart3],
-          ["Financeiro pessoal", WalletCards],
-          ["Financeiro da barbearia", BriefcaseBusiness],
+          workspace === "business"
+            ? ["Resultado da empresa", BriefcaseBusiness]
+            : ["Resumo pessoal", WalletCards],
         ].map(([label, Icon]) => (
           <button key={label as string}>
             <Icon />
@@ -1145,7 +1141,7 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
   );
 }
 
-function InsightsPage() {
+function InsightsPage({ workspace }: { workspace: Workspace }) {
   return (
     <>
       <PageHeader
@@ -1160,16 +1156,14 @@ function InsightsPage() {
           </span>
           <p>DESTAQUE DO MÊS</p>
           <h2>Seu ambiente está pronto</h2>
-          <p>
-            Cadastre suas primeiras movimentações para receber análises e recomendações.
-          </p>
+          <p>{workspace === "business" ? "Cadastre as movimentações da empresa para receber análises e recomendações." : "Cadastre suas movimentações pessoais para receber análises e recomendações."}</p>
           <Button variant="outline">Ver relatório relacionado</Button>
         </article>
         {[
           ["Maior gasto", "Aguardando movimentações.", "gold"],
           ["Melhor dia", "Aguardando movimentações.", "green"],
           ["Atenção", "Nenhuma pendência cadastrada.", "red"],
-          ["Oportunidade", "Comece registrando seus serviços.", "blue"],
+          ["Oportunidade", workspace === "business" ? "Comece registrando seus serviços." : "Comece registrando suas receitas.", "blue"],
         ].map(([title, copy, tone]) => (
           <article className={`mini-insight ${tone}`} key={title}>
             <Lightbulb />
@@ -1186,16 +1180,37 @@ function InsightsPage() {
 function SettingsPage({
   profile,
   onProfileChange,
+  workspace,
 }: {
   profile: BusinessProfile;
   onProfileChange: (profile: BusinessProfile) => void;
+  workspace: Workspace;
 }) {
   const [saved, setSaved] = useState(false);
   const [form, setForm] = useState(profile);
+  const [section, setSection] = useState("perfil");
+  const [financialAlerts, setFinancialAlerts] = useState(true);
+  const [weeklySummary, setWeeklySummary] = useState(true);
+  const sections = workspace === "business"
+    ? [["perfil", "Perfil"], ["empresa", "Empresa"], ["categorias", "Categorias"], ["notificacoes", "Notificações"], ["seguranca", "Segurança"]]
+    : [["perfil", "Perfil"], ["categorias", "Categorias"], ["notificacoes", "Notificações"], ["seguranca", "Segurança"]];
   const update = (field: keyof BusinessProfile, value: string) => {
     setSaved(false);
     setForm((current) => ({ ...current, [field]: value }));
   };
+  const save = () => {
+    onProfileChange(form);
+    window.localStorage.setItem(`blackfin_notification_preferences_${workspace}_v1`, JSON.stringify({ financialAlerts, weeklySummary }));
+    setSaved(true);
+  };
+  const titles: Record<string, [string, string, string]> = {
+    perfil: ["PERFIL", "Informações pessoais", "Dados usados para identificar este ambiente."],
+    empresa: ["EMPRESA", "Dados da empresa", "Informações exclusivas da operação empresarial."],
+    categorias: ["ORGANIZAÇÃO", "Categorias financeiras", "As categorias sugeridas ajudam a classificar os lançamentos."],
+    notificacoes: ["ALERTAS", "Notificações", "Escolha o que deseja acompanhar neste ambiente."],
+    seguranca: ["SEGURANÇA", "Acesso protegido", "Cada ambiente usa credenciais e sessão próprias."],
+  };
+  const [eyebrow, title, description] = titles[section] ?? titles.perfil;
   return (
     <>
       <PageHeader
@@ -1205,95 +1220,144 @@ function SettingsPage({
       />
       <div className="settings-layout">
         <nav>
-          {[
-            "Perfil",
-            "Barbearia",
-            "Categorias",
-            "Notificações",
-            "Segurança",
-          ].map((item, i) => (
-            <button className={i === 0 ? "active" : ""} key={item}>
+          {sections.map(([id, label]) => (
+            <button className={section === id ? "active" : ""} key={id} onClick={() => { setSection(id); setSaved(false); }}>
               <Settings />
-              {item}
+              {label}
             </button>
           ))}
         </nav>
         <div className="data-card padded settings-form">
           <div className="section-title">
             <div>
-              <p>PERFIL</p>
-              <h2>Informações pessoais</h2>
+              <p>{eyebrow}</p>
+              <h2>{title}</h2>
             </div>
           </div>
-          <div className="profile-photo">
-            <div>{profile.ownerName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
-            <Button variant="outline" size="sm">
-              Alterar foto
-            </Button>
-          </div>
-          <div className="review-form">
-            <label>
-              Nome
-              <Input value={form.ownerName} onChange={(event) => update("ownerName", event.target.value)} />
-            </label>
-            <label>
-              E-mail
-              <Input value={form.email} onChange={(event) => update("email", event.target.value)} type="email" />
-            </label>
-            <label className="wide">
-              Nome da barbearia
-              <Input value={form.businessName} onChange={(event) => update("businessName", event.target.value)} />
-            </label>
-          </div>
-          <div className="settings-switch">
-            <div>
-              <strong>Notificações financeiras</strong>
-              <p>Receba alertas de vencimentos e mudanças relevantes.</p>
-            </div>
-            <Switch defaultChecked />
-          </div>
-          <div className="settings-switch">
-            <div>
-              <strong>Resumo semanal</strong>
-              <p>Uma visão consolidada toda segunda-feira.</p>
-            </div>
-            <Switch defaultChecked />
-          </div>
-          <Button className="gold-button" onClick={() => { onProfileChange(form); setSaved(true); }}>
-            {saved ? (
-              <>
-                <Check />
-                Alterações salvas
-              </>
-            ) : (
-              "Salvar alterações"
-            )}
-          </Button>
+          <p className="settings-section-description">{description}</p>
+          {section === "perfil" && <div className="review-form">
+            <label><span>Nome</span><Input value={form.ownerName} onChange={(event) => update("ownerName", event.target.value)} /></label>
+            <label><span>E-mail</span><Input value={form.email} onChange={(event) => update("email", event.target.value)} type="email" /></label>
+          </div>}
+          {section === "empresa" && workspace === "business" && <div className="review-form">
+            <label className="wide"><span>Nome da empresa</span><Input value={form.businessName} onChange={(event) => update("businessName", event.target.value)} /></label>
+            <label><span>Telefone</span><Input value={form.phone} onChange={(event) => update("phone", event.target.value)} /></label>
+            <label><span>E-mail da empresa</span><Input value={form.email} onChange={(event) => update("email", event.target.value)} type="email" /></label>
+            <label><span>Cidade</span><Input value={form.city} onChange={(event) => update("city", event.target.value)} /></label>
+            <label><span>UF</span><Input value={form.state} onChange={(event) => update("state", event.target.value.toUpperCase())} maxLength={2} /></label>
+          </div>}
+          {section === "categorias" && <div className="settings-category-list">
+            {(workspace === "business" ? ["Serviços", "Produtos", "Fornecedores", "Comissões", "Impostos"] : ["Moradia", "Alimentação", "Transporte", "Saúde", "Lazer"]).map((category) => <span key={category}>{category}</span>)}
+          </div>}
+          {section === "notificacoes" && <>
+            <div className="settings-switch"><div><strong>Notificações financeiras</strong><p>Receba alertas de vencimentos e mudanças relevantes.</p></div><Switch checked={financialAlerts} onCheckedChange={(value) => { setFinancialAlerts(value); setSaved(false); }} /></div>
+            <div className="settings-switch"><div><strong>Resumo semanal</strong><p>Uma visão consolidada toda segunda-feira.</p></div><Switch checked={weeklySummary} onCheckedChange={(value) => { setWeeklySummary(value); setSaved(false); }} /></div>
+          </>}
+          {section === "seguranca" && <div className="settings-security-note"><ShieldCheck /><div><strong>Ambiente {workspace === "business" ? "empresarial" : "pessoal"} ativo</strong><p>Para alterar login ou senha publicada, atualize as variáveis de ambiente na Vercel e faça um novo deploy.</p></div></div>}
+          {section !== "seguranca" && <Button className="gold-button" onClick={save}>{saved ? <><Check /> Alterações salvas</> : "Salvar alterações"}</Button>}
         </div>
       </div>
     </>
   );
 }
 
-export function FeaturePage({ path, onNewTransaction, profile, onProfileChange }: PageProps) {
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+  photo?: string;
+};
+
+function ProductsPage() {
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [photo, setPhoto] = useState<string>();
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.localStorage.getItem("blackfin_products_business_v1");
+        if (saved) setProducts(JSON.parse(saved) as Product[]);
+      } catch {
+        window.localStorage.removeItem("blackfin_products_business_v1");
+      } finally {
+        setLoaded(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (loaded) window.localStorage.setItem("blackfin_products_business_v1", JSON.stringify(products));
+  }, [products, loaded]);
+  const selectPhoto = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhoto(typeof reader.result === "string" ? reader.result : undefined);
+    reader.readAsDataURL(file);
+  };
+  const save = () => {
+    const value = Number(price.replace(/\./g, "").replace(",", "."));
+    if (!name.trim() || !Number.isFinite(value) || value <= 0) return;
+    setProducts((items) => [{ id: crypto.randomUUID(), name: name.trim(), price: value, photo }, ...items]);
+    setName(""); setPrice(""); setPhoto(undefined); setOpen(false);
+  };
+  return <>
+    <PageHeader eyebrow="CATÁLOGO EMPRESARIAL" title="Produtos" description="Cadastre produtos da empresa com foto e preço. Este catálogo não aparece no ambiente pessoal." action={<Button className="gold-button" onClick={() => setOpen(true)}><PackagePlus /> Novo produto</Button>} />
+    <div className="product-grid">
+      {products.map((product) => <article className="product-card" key={product.id}>
+        <div className="product-photo">{product.photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={product.photo} alt={product.name} /> : <PackagePlus />}</div>
+        <div><small>PRODUTO</small><h3>{product.name}</h3><strong>{money(product.price)}</strong></div>
+      </article>)}
+      {products.length === 0 && <div className="empty-products"><PackagePlus /><strong>Nenhum produto cadastrado</strong><p>Adicione fotos e preços para organizar o catálogo da empresa.</p><Button className="gold-button" onClick={() => setOpen(true)}>Cadastrar produto</Button></div>}
+    </div>
+    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="transaction-dialog"><DialogHeader><DialogTitle>Novo produto</DialogTitle><DialogDescription>Inclua a foto e o valor de venda do produto.</DialogDescription></DialogHeader><div className="review-form">
+      <input ref={photoInput} hidden type="file" accept="image/*" onChange={(event) => selectPhoto(event.target.files?.[0])} />
+      <button type="button" className="product-upload" onClick={() => photoInput.current?.click()}>{photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={photo} alt="Prévia do produto" /> : <><Upload /> Adicionar foto</>}</button>
+      <label className="wide">Nome do produto<Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Pomada modeladora" /></label>
+      <label className="wide">Valor de venda<Input value={price} onChange={(event) => setPrice(event.target.value)} inputMode="decimal" placeholder="R$ 0,00" /></label>
+      <Button className="gold-button wide" onClick={save}>Salvar produto</Button>
+    </div></DialogContent></Dialog>
+  </>;
+}
+
+function RestrictedPage({ workspace }: { workspace: Workspace }) {
+  return (
+    <div className="access-restricted">
+      <ShieldCheck />
+      <p>ACESSO SEPARADO</p>
+      <h1>Esta área pertence ao ambiente {workspace === "business" ? "pessoal" : "empresarial"}.</h1>
+      <span>Faça login no ambiente correspondente para visualizar essas informações.</span>
+    </div>
+  );
+}
+
+export function FeaturePage({ path, onNewTransaction, profile, onProfileChange, workspace }: PageProps) {
   const content = useMemo(() => {
+    const businessOnly = ["/financeiro/empresarial", "/produtos", "/barbeiros", "/comissoes"];
+    if (workspace === "personal" && businessOnly.includes(path)) return <RestrictedPage workspace={workspace} />;
+    if (workspace === "business" && path === "/financeiro/pessoal") return <RestrictedPage workspace={workspace} />;
     if (path === "/financeiro/pessoal")
       return <FinancePage onNew={onNewTransaction} />;
-    if (path === "/financeiro/barbearia")
+    if (path === "/financeiro/empresarial")
       return <FinancePage business onNew={onNewTransaction} />;
+    if (path === "/produtos" && workspace === "business") return <ProductsPage />;
     if (path === "/movimentacoes")
       return <TransactionsPage onNew={onNewTransaction} />;
     if (path === "/comprovantes")
-      return <ReceiptsPage onNew={onNewTransaction} />;
+      return <ReceiptsPage onNew={onNewTransaction} workspace={workspace} />;
     if (path === "/contas-pagar") return <AccountsPage />;
     if (path === "/contas-receber") return <AccountsPage receivable />;
-    if (path === "/relatorios") return <ReportsPage profile={profile} />;
+    if (path === "/relatorios") return <ReportsPage profile={profile} workspace={workspace} />;
     if (path === "/historico") return <HistoryPage />;
     if (path === "/barbeiros") return <PeoplePage />;
     if (path === "/comissoes") return <PeoplePage commissions />;
-    if (path === "/insights") return <InsightsPage />;
-    if (path === "/configuracoes") return <SettingsPage profile={profile} onProfileChange={onProfileChange} />;
+    if (path === "/insights") return <InsightsPage workspace={workspace} />;
+    if (path === "/configuracoes") return <SettingsPage profile={profile} onProfileChange={onProfileChange} workspace={workspace} />;
     return <TransactionsPage onNew={onNewTransaction} />;
-  }, [path, onNewTransaction, profile, onProfileChange]);
+  }, [path, onNewTransaction, profile, onProfileChange, workspace]);
   return <div className="feature-wrap">{content}</div>;
 }

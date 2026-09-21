@@ -116,6 +116,15 @@ Replace the filename with the pending migration and `DB` with your D1 binding na
 - `npm run start`: preview the built Worker locally with D1/R2 support
 - `npm run db:generate`: generate Drizzle migrations after schema changes
 
+## Deploy na Vercel
+
+Este repositório é reconhecido como Next.js pelo `vercel.json` na raiz e usa
+`npm ci` para instalar as dependências e `npm run build` para gerar o deploy.
+Na Vercel, importe o repositório sem definir uma pasta raiz alternativa e
+cadastre as variáveis de `.env.example` em **Settings → Environment Variables**.
+Defina `BLACKFIN_SESSION_SECRET` com uma string longa e aleatória; as demais
+variáveis permitem alterar os acessos empresarial e pessoal sem mudar o código.
+
 When using the Sites plugin, follow its skill instructions for installation, builds, and publishing. These npm commands remain available for standalone use.
 
 The portable build runs Vinext directly without a host `timeout` command. The managed-linux build uses `scripts/build-verified.sh` and its existing `SITES_BUILD_TIMEOUT` setting.

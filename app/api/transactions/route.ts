@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getCloudflareBindings } from "@/lib/cloudflare-bindings";
+import { ownerForRequest } from "@/lib/auth-session";
 
 const inputSchema = z.object({
   type: z.enum(["receita", "despesa"]),
@@ -20,47 +21,41 @@ const inputSchema = z.object({
   status: z.enum(["pago", "pendente"]),
   notes: z.string().trim().max(500).optional(),
 });
-const userId = (request: Request) =>
-  request.headers.get("oai-authenticated-user-id");
-
 export async function GET(request: Request) {
-  const owner = userId(request);
-  if (!owner)
+  const session = ownerForRequest(request);
+  if (!session)
     return Response.json(
       { error: "Autenticação necessária." },
       { status: 401 },
     );
+  const url = new URL(request.url);
+  const requestedOrigin = url.searchParams.get("origin");
+  const origin = session.workspace === "business" ? "barbearia" : "pessoal";
+  if (requestedOrigin && requestedOrigin !== origin)
+    return Response.json({ error: "Este ambiente não tem acesso a esses dados." }, { status: 403 });
   const { DB } = await getCloudflareBindings();
   if (!DB)
     return Response.json(
       { error: "Banco temporariamente indisponível." },
       { status: 503 },
     );
-  const url = new URL(request.url);
-  const origin = url.searchParams.get("origin");
   const statement = origin
     ? DB.prepare(
         "SELECT id,type,origin,amount_cents AS amountCents,occurred_on AS occurredOn,description,category,payment_method AS paymentMethod,status,notes,receipt_id AS receiptId FROM transactions WHERE user_id = ? AND origin = ? ORDER BY occurred_on DESC, created_at DESC LIMIT 200",
-      ).bind(owner, origin)
+      ).bind(session.owner, origin)
     : DB.prepare(
         "SELECT id,type,origin,amount_cents AS amountCents,occurred_on AS occurredOn,description,category,payment_method AS paymentMethod,status,notes,receipt_id AS receiptId FROM transactions WHERE user_id = ? ORDER BY occurred_on DESC, created_at DESC LIMIT 200",
-      ).bind(owner);
+      ).bind(session.owner);
   const result = await statement.all();
   return Response.json({ transactions: result.results });
 }
 
 export async function POST(request: Request) {
-  const owner = userId(request);
-  if (!owner)
+  const session = ownerForRequest(request);
+  if (!session)
     return Response.json(
       { error: "Autenticação necessária." },
       { status: 401 },
-    );
-  const { DB } = await getCloudflareBindings();
-  if (!DB)
-    return Response.json(
-      { error: "Banco temporariamente indisponível." },
-      { status: 503 },
     );
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
@@ -71,6 +66,18 @@ export async function POST(request: Request) {
       },
       { status: 400 },
     );
+  const requiredOrigin = session.workspace === "business" ? "barbearia" : "pessoal";
+  if (parsed.data.origin !== requiredOrigin)
+    return Response.json(
+      { error: "Este lançamento não pertence ao ambiente ativo." },
+      { status: 403 },
+    );
+  const { DB } = await getCloudflareBindings();
+  if (!DB)
+    return Response.json(
+      { error: "Banco temporariamente indisponível." },
+      { status: 503 },
+    );
   const id = crypto.randomUUID();
   const now = Date.now();
   const v = parsed.data;
@@ -79,7 +86,7 @@ export async function POST(request: Request) {
   )
     .bind(
       id,
-      owner,
+      session.owner,
       v.type,
       v.origin,
       v.amountCents,

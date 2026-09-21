@@ -1,11 +1,12 @@
 import { receiptParser } from "@/services/receipt-parser";
 import { getCloudflareBindings } from "@/lib/cloudflare-bindings";
+import { ownerForRequest } from "@/lib/auth-session";
 
 const allowed = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const MAX = 10 * 1024 * 1024;
 export async function POST(request: Request) {
-  const owner = request.headers.get("oai-authenticated-user-id");
-  if (!owner)
+  const session = ownerForRequest(request);
+  if (!session)
     return Response.json(
       { error: "Autenticação necessária." },
       { status: 401 },
@@ -28,11 +29,11 @@ export async function POST(request: Request) {
   const bytes = await file.arrayBuffer();
   const parsed = await receiptParser.parse(bytes, file.type);
   const id = crypto.randomUUID();
-  const key = `${owner}/${id}`;
+  const key = `${session.owner}/${id}`;
   const now = Date.now();
   await RECEIPTS.put(key, bytes, {
     httpMetadata: { contentType: file.type },
-    customMetadata: { owner },
+    customMetadata: { owner: session.owner },
   });
   try {
     await DB.prepare(
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
     )
       .bind(
         id,
-        owner,
+        session.owner,
         key,
         file.name,
         file.type,
