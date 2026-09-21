@@ -2339,6 +2339,8 @@ button {
 .access-restricted > p { margin: 0; color: #c5a467; font-size: 10px; letter-spacing: .16em; }
 .access-restricted h1 { max-width: 510px; margin: 10px 0; color: #f0eee8; font-family: Georgia, serif; font-size: clamp(24px, 4vw, 34px); }
 .access-restricted span { max-width: 460px; line-height: 1.6; }
+.delete-transaction { color: #d87974; }
+.delete-transaction:hover { color: #ff9a94; background: #321b1a; }
 .type-toggle svg {
   width: 16px;
 }

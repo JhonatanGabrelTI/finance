@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   Sparkles,
   TrendingUp,
+  Trash2,
   Upload,
   UserPlus,
   UsersRound,
@@ -78,6 +79,7 @@ type PageProps = {
   transactions: FinancialTransaction[];
 };
 export type FinancialTransaction = {
+  id?: string;
   type: "receita" | "despesa";
   origin: "pessoal" | "barbearia";
   amount: number;
@@ -86,6 +88,7 @@ export type FinancialTransaction = {
   category: string;
 };
 type Tx = {
+  id: string;
   date: string;
   description: string;
   category: string;
@@ -97,6 +100,7 @@ type Tx = {
 function toTableRows(transactions: FinancialTransaction[]): Tx[] {
   return transactions.map((transaction) => ({
     date: transaction.date.split("-").reverse().join("/"),
+    id: transaction.id ?? `${transaction.date}-${transaction.description}-${transaction.amount}`,
     description: transaction.description,
     category: transaction.category,
     origin: transaction.origin === "barbearia" ? "Empresa" : "Pessoal",
@@ -169,7 +173,13 @@ function Stat({
   );
 }
 
-function TransactionTable({ rows = [] }: { rows?: Tx[] }) {
+function TransactionTable({
+  rows = [],
+  onDelete,
+}: {
+  rows?: Tx[];
+  onDelete?: (id: string) => void;
+}) {
   return (
     <div className="data-card">
       <Table>
@@ -181,12 +191,13 @@ function TransactionTable({ rows = [] }: { rows?: Tx[] }) {
             <TableHead>ORIGEM</TableHead>
             <TableHead>STATUS</TableHead>
             <TableHead className="text-right">VALOR</TableHead>
+            {onDelete && <TableHead />}
           </TableRow>
         </TableHeader>
         <TableBody>
           {rows.length === 0 && (
             <TableRow>
-              <TableCell colSpan={6} className="empty-table">
+              <TableCell colSpan={onDelete ? 7 : 6} className="empty-table">
                 Nenhuma movimentação cadastrada.
               </TableCell>
             </TableRow>
@@ -213,6 +224,7 @@ function TransactionTable({ rows = [] }: { rows?: Tx[] }) {
                 {tx.type === "Receita" ? "+ " : "− "}
                 {money(tx.value)}
               </TableCell>
+              {onDelete && <TableCell className="text-right"><Button variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir ${tx.description}`} title="Excluir lançamento" onClick={() => onDelete(tx.id)}><Trash2 /></Button></TableCell>}
             </TableRow>
           ))}
         </TableBody>
@@ -221,7 +233,7 @@ function TransactionTable({ rows = [] }: { rows?: Tx[] }) {
   );
 }
 
-function TransactionsPage({ onNew, transactions }: { onNew: () => void; transactions: FinancialTransaction[] }) {
+function TransactionsPage({ onNew, transactions, onDelete }: { onNew: () => void; transactions: FinancialTransaction[]; onDelete: (id: string) => void }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("todos");
   const visible = toTableRows(transactions).filter(
@@ -263,7 +275,7 @@ function TransactionsPage({ onNew, transactions }: { onNew: () => void; transact
         </Select>
         <span>{visible.length} resultados</span>
       </div>
-      <TransactionTable rows={visible} />
+      <TransactionTable rows={visible} onDelete={onDelete} />
     </>
   );
 }
@@ -272,10 +284,12 @@ function FinancePage({
   business = false,
   onNew,
   transactions,
+  onDelete,
 }: {
   business?: boolean;
   onNew: () => void;
   transactions: FinancialTransaction[];
+  onDelete: (id: string) => void;
 }) {
   const cats = business
     ? ["Produtos", "Comissões", "Aluguel", "Marketing", "Impostos"]
@@ -340,10 +354,6 @@ function FinancePage({
               <p>DISTRIBUIÇÃO</p>
               <h2>Gastos por categoria</h2>
             </div>
-            <Button variant="outline" size="sm">
-              <Plus />
-              Categoria
-            </Button>
           </div>
           {expensesByCategory.map(({ category, total }) => (
             <div className="category-line" key={category}>
@@ -369,9 +379,7 @@ function FinancePage({
           </p>
         </div>
       </div>
-      <TransactionTable
-        rows={rows}
-      />
+      <TransactionTable rows={rows} onDelete={onDelete} />
     </>
   );
 }
@@ -508,7 +516,7 @@ function ReceiptsPage({ onNew, workspace }: { onNew: () => void; workspace: Work
   );
 }
 
-function AccountsPage({ receivable = false }: { receivable?: boolean }) {
+function AccountsPage({ receivable = false, onNew }: { receivable?: boolean; onNew: () => void }) {
   const rows: Array<{ n: string; v: number; d: string; s: string }> = [];
   return (
     <>
@@ -521,7 +529,7 @@ function AccountsPage({ receivable = false }: { receivable?: boolean }) {
             : "Visualize vencimentos e mantenha os pagamentos em dia."
         }
         action={
-          <Button className="gold-button">
+          <Button className="gold-button" onClick={onNew}>
             <Plus />
             Nova conta
           </Button>
@@ -839,7 +847,7 @@ function ReportsPage({ profile, workspace, transactions }: { profile: BusinessPr
             ? ["Resultado da empresa", BriefcaseBusiness]
             : ["Resumo pessoal", WalletCards],
         ].map(([label, Icon]) => (
-          <button key={label as string}>
+          <button key={label as string} onClick={() => window.alert(`O relatório “${label as string}” usa os lançamentos exibidos nesta página.`)}>
             <Icon />
             <span>{label as string}</span>
             <ChevronRight />
@@ -850,7 +858,7 @@ function ReportsPage({ profile, workspace, transactions }: { profile: BusinessPr
   );
 }
 
-function HistoryPage({ transactions }: { transactions: FinancialTransaction[] }) {
+function HistoryPage({ transactions, onDelete }: { transactions: FinancialTransaction[]; onDelete: (id: string) => void }) {
   const [month, setMonth] = useState("Setembro");
   const months = [
     "Janeiro",
@@ -917,7 +925,7 @@ function HistoryPage({ transactions }: { transactions: FinancialTransaction[] })
           icon={TrendingUp}
         />
       </div>
-      <TransactionTable rows={toTableRows(currentTransactions)} />
+      <TransactionTable rows={toTableRows(currentTransactions)} onDelete={onDelete} />
     </>
   );
 }
@@ -1199,7 +1207,7 @@ function InsightsPage({ workspace }: { workspace: Workspace }) {
           <p>DESTAQUE DO MÊS</p>
           <h2>Seu ambiente está pronto</h2>
           <p>{workspace === "business" ? "Cadastre as movimentações da empresa para receber análises e recomendações." : "Cadastre suas movimentações pessoais para receber análises e recomendações."}</p>
-          <Button variant="outline">Ver relatório relacionado</Button>
+          <Button variant="outline" onClick={() => window.alert("Os insights são atualizados automaticamente quando você adiciona ou exclui lançamentos.")}>Como funcionam os insights</Button>
         </article>
         {[
           ["Maior gasto", "Aguardando movimentações.", "gold"],
@@ -1377,29 +1385,29 @@ function RestrictedPage({ workspace }: { workspace: Workspace }) {
   );
 }
 
-export function FeaturePage({ path, onNewTransaction, profile, onProfileChange, workspace, transactions }: PageProps) {
+export function FeaturePage({ path, onNewTransaction, profile, onProfileChange, workspace, transactions, onDeleteTransaction }: PageProps & { onDeleteTransaction: (id: string) => void }) {
   const content = useMemo(() => {
     const businessOnly = ["/financeiro/empresarial", "/produtos", "/barbeiros", "/comissoes"];
     if (workspace === "personal" && businessOnly.includes(path)) return <RestrictedPage workspace={workspace} />;
     if (workspace === "business" && path === "/financeiro/pessoal") return <RestrictedPage workspace={workspace} />;
     if (path === "/financeiro/pessoal")
-      return <FinancePage onNew={onNewTransaction} transactions={transactions} />;
+      return <FinancePage onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/financeiro/empresarial")
-      return <FinancePage business onNew={onNewTransaction} transactions={transactions} />;
+      return <FinancePage business onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/produtos" && workspace === "business") return <ProductsPage />;
     if (path === "/movimentacoes")
-      return <TransactionsPage onNew={onNewTransaction} transactions={transactions} />;
+      return <TransactionsPage onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/comprovantes")
       return <ReceiptsPage onNew={onNewTransaction} workspace={workspace} />;
-    if (path === "/contas-pagar") return <AccountsPage />;
-    if (path === "/contas-receber") return <AccountsPage receivable />;
+    if (path === "/contas-pagar") return <AccountsPage onNew={onNewTransaction} />;
+    if (path === "/contas-receber") return <AccountsPage receivable onNew={onNewTransaction} />;
     if (path === "/relatorios") return <ReportsPage profile={profile} workspace={workspace} transactions={transactions} />;
-    if (path === "/historico") return <HistoryPage transactions={transactions} />;
+    if (path === "/historico") return <HistoryPage transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/barbeiros") return <PeoplePage />;
     if (path === "/comissoes") return <PeoplePage commissions />;
     if (path === "/insights") return <InsightsPage workspace={workspace} />;
     if (path === "/configuracoes") return <SettingsPage profile={profile} onProfileChange={onProfileChange} workspace={workspace} />;
-    return <TransactionsPage onNew={onNewTransaction} transactions={transactions} />;
-  }, [path, onNewTransaction, profile, onProfileChange, workspace, transactions]);
+    return <TransactionsPage onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
+  }, [path, onNewTransaction, profile, onProfileChange, workspace, transactions, onDeleteTransaction]);
   return <div className="feature-wrap">{content}</div>;
 }

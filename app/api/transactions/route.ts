@@ -3,6 +3,7 @@ import { getCloudflareBindings } from "@/lib/cloudflare-bindings";
 import { ownerForRequest } from "@/lib/auth-session";
 
 const inputSchema = z.object({
+  id: z.string().uuid().optional(),
   type: z.enum(["receita", "despesa"]),
   origin: z.enum(["pessoal", "barbearia"]),
   amountCents: z.number().int().positive(),
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
       { error: "Banco temporariamente indisponível." },
       { status: 503 },
     );
-  const id = crypto.randomUUID();
+  const id = parsed.data.id ?? crypto.randomUUID();
   const now = Date.now();
   const v = parsed.data;
   await DB.prepare(
@@ -101,4 +102,19 @@ export async function POST(request: Request) {
     )
     .run();
   return Response.json({ id, ...v }, { status: 201 });
+}
+
+export async function DELETE(request: Request) {
+  const session = ownerForRequest(request);
+  if (!session) return Response.json({ error: "Autenticação necessária." }, { status: 401 });
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id || !z.string().uuid().safeParse(id).success)
+    return Response.json({ error: "Lançamento inválido." }, { status: 400 });
+  const { DB } = await getCloudflareBindings();
+  if (!DB) return Response.json({ error: "Banco temporariamente indisponível." }, { status: 503 });
+  const origin = session.workspace === "business" ? "barbearia" : "pessoal";
+  await DB.prepare("DELETE FROM transactions WHERE id = ? AND user_id = ? AND origin = ?")
+    .bind(id, session.owner, origin)
+    .run();
+  return Response.json({ deleted: true });
 }

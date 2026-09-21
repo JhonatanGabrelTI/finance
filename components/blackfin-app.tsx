@@ -475,18 +475,25 @@ function BlackfinWorkspace({
   const formatMoney = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const saveTransaction = (transaction: FinancialTransaction) => {
-    setAddedTransactions((items) => [transaction, ...items]);
+    const item = { ...transaction, id: crypto.randomUUID() };
+    setAddedTransactions((items) => [item, ...items]);
     void fetch("/api/transactions", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        ...transaction,
-        amountCents: Math.round(transaction.amount * 100),
-        occurredOn: transaction.date,
+        ...item,
+        amountCents: Math.round(item.amount * 100),
+        occurredOn: item.date,
         paymentMethod: "pix",
         status: "pago",
       }),
     }).catch(() => {});
+  };
+  const deleteTransaction = (id: string) => {
+    const item = addedTransactions.find((transaction) => (transaction.id ?? `${transaction.date}-${transaction.description}-${transaction.amount}`) === id);
+    if (!item || !window.confirm(`Excluir o lançamento “${item.description}”?`)) return;
+    setAddedTransactions((items) => items.filter((transaction) => (transaction.id ?? `${transaction.date}-${transaction.description}-${transaction.amount}`) !== id));
+    if (item.id) void fetch(`/api/transactions?id=${encodeURIComponent(item.id)}`, { method: "DELETE" }).catch(() => {});
   };
   useEffect(() => {
     const context = (
@@ -602,6 +609,7 @@ function BlackfinWorkspace({
             onProfileChange={onProfileChange}
             workspace={workspace}
             transactions={addedTransactions}
+            onDeleteTransaction={deleteTransaction}
           />
         ) : (
           <div className="dashboard-wrap">
@@ -790,7 +798,7 @@ function BlackfinWorkspace({
                     <p>Cadastre contas e vencimentos para receber avisos.</p>
                   </div>
                 </div>
-                <button className="text-action">
+                <button className="text-action" onClick={() => navigate("/insights")}>
                   Ver todos os insights <ArrowUpRight />
                 </button>
               </article>
@@ -801,7 +809,7 @@ function BlackfinWorkspace({
                   <p>ATIVIDADE RECENTE</p>
                   <h2>Últimas movimentações</h2>
                 </div>
-                <button className="text-action">
+                <button className="text-action" onClick={() => navigate("/historico")}>
                   Ver histórico completo <ArrowUpRight />
                 </button>
               </div>
@@ -824,6 +832,7 @@ function BlackfinWorkspace({
                   )}
                   {[
                     ...addedTransactions.map((item) => ({
+                      id: item.id ?? `${item.date}-${item.description}-${item.amount}`,
                       icon:
                         item.type === "receita" ? ArrowUpRight : ArrowDownLeft,
                       title: item.description,
@@ -831,7 +840,7 @@ function BlackfinWorkspace({
                       value: `${item.type === "receita" ? "+" : "−"} ${item.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
                       positive: item.type === "receita",
                     })),
-                    ...transactions,
+                    ...transactions.map((item) => ({ ...item, id: item.title })),
                   ]
                     .slice(0, 6)
                     .map((tx) => (
@@ -861,9 +870,7 @@ function BlackfinWorkspace({
                           {tx.value}
                         </TableCell>
                         <TableCell>
-                          <button aria-label={`Mais opções para ${tx.title}`}>
-                            <MoreHorizontal />
-                          </button>
+                          {tx.id && <button aria-label={`Excluir ${tx.title}`} title="Excluir lançamento" className="delete-transaction" onClick={() => deleteTransaction(tx.id)}><MoreHorizontal /></button>}
                         </TableCell>
                       </TableRow>
                     ))}
