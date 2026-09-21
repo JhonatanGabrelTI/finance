@@ -33,6 +33,25 @@ export type BusinessProfile = {
 
 const LEGACY_PROFILE_KEY = "blackfin_business_profile_v1";
 const profileKey = (workspace: Workspace) => `blackfin_${workspace}_profile_v2`;
+const CLEAN_START_KEY = "blackfin_clean_start_2026_09_21";
+const testDataKeys = [
+  LEGACY_PROFILE_KEY,
+  "blackfin_business_profile_v2",
+  "blackfin_personal_profile_v2",
+  "blackfin_transactions_v1",
+  "blackfin_transactions_business_v2",
+  "blackfin_transactions_personal_v2",
+  "blackfin_barbers_v1",
+  "blackfin_products_business_v1",
+  "blackfin_notification_preferences_business_v1",
+  "blackfin_notification_preferences_personal_v1",
+];
+
+function clearTestDataOnce() {
+  if (window.localStorage.getItem(CLEAN_START_KEY)) return;
+  testDataKeys.forEach((key) => window.localStorage.removeItem(key));
+  window.localStorage.setItem(CLEAN_START_KEY, "done");
+}
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, "").slice(0, 11);
@@ -99,6 +118,7 @@ export function AuthFlow({
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
+    clearTestDataOnce();
     void fetch("/api/auth/session", { cache: "no-store" })
       .then(async (response) =>
         (await response.json()) as { authenticated?: boolean; workspace?: Workspace | null },
