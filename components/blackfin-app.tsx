@@ -15,6 +15,7 @@ import {
   FileText,
   Gauge,
   Lightbulb,
+  LogOut,
   Menu,
   MoreHorizontal,
   Plus,
@@ -68,6 +69,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { FeaturePage } from "@/components/blackfin-pages";
+import { AuthFlow, type BusinessProfile } from "@/components/auth-flow";
 
 const nav = [
   ["Dashboard", Gauge, "/dashboard"],
@@ -84,44 +86,31 @@ const nav = [
   ["Insights", Lightbulb, "/insights"],
 ] as const;
 const chartData = [
-  { day: "14", receita: 3800, despesa: 1120 },
-  { day: "15", receita: 4200, despesa: 1650 },
-  { day: "16", receita: 3450, despesa: 980 },
-  { day: "17", receita: 5100, despesa: 1720 },
-  { day: "18", receita: 4780, despesa: 1320 },
-  { day: "19", receita: 6100, despesa: 1990 },
-  { day: "20", receita: 5590, despesa: 1460 },
+  { day: "14", receita: 0, despesa: 0 },
+  { day: "15", receita: 0, despesa: 0 },
+  { day: "16", receita: 0, despesa: 0 },
+  { day: "17", receita: 0, despesa: 0 },
+  { day: "18", receita: 0, despesa: 0 },
+  { day: "19", receita: 0, despesa: 0 },
+  { day: "20", receita: 0, despesa: 0 },
 ];
-const transactions = [
-  {
-    icon: ArrowUpRight,
-    title: "Serviços — sábado",
-    meta: "Barbearia · Pix",
-    value: "+ R$ 2.840,00",
-    positive: true,
-  },
-  {
-    icon: ArrowDownLeft,
-    title: "Fornecedor Navalha & Cia.",
-    meta: "Produtos · Boleto",
-    value: "− R$ 687,40",
-    positive: false,
-  },
-  {
-    icon: ArrowUpRight,
-    title: "Corte + barba",
-    meta: "Barbearia · Cartão",
-    value: "+ R$ 148,00",
-    positive: true,
-  },
-  {
-    icon: ArrowDownLeft,
-    title: "Assinatura de software",
-    meta: "Operacional · Crédito",
-    value: "− R$ 89,90",
-    positive: false,
-  },
-];
+const transactions: Array<{
+  icon: typeof ArrowUpRight;
+  title: string;
+  meta: string;
+  value: string;
+  positive: boolean;
+}> = [];
+
+function initials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
 
 function Brand() {
   return (
@@ -141,19 +130,21 @@ function Sidebar({
   mobile = false,
   currentPath,
   onNavigate,
+  profile,
 }: {
   mobile?: boolean;
   currentPath: string;
   onNavigate: (path: string) => void;
+  profile: BusinessProfile;
 }) {
   return (
     <aside className={mobile ? "mobile-sidebar" : "sidebar"}>
       <Brand />
       <div className="workspace-pill">
-        <span>BF</span>
+        <span>{initials(profile.businessName)}</span>
         <div>
-          <strong>Barbearia Ferreira</strong>
-          <small>Ambiente demonstrativo</small>
+          <strong>{profile.businessName}</strong>
+          <small>Ambiente personalizado</small>
         </div>
         <ChevronDown />
       </div>
@@ -191,9 +182,9 @@ function Sidebar({
           <span>Configurações</span>
         </Link>
         <div className="profile-mini">
-          <span>JG</span>
+          <span>{initials(profile.ownerName)}</span>
           <div>
-            <strong>Jhonatan Gabriel</strong>
+            <strong>{profile.ownerName}</strong>
             <small>Proprietário</small>
           </div>
           <MoreHorizontal />
@@ -404,17 +395,26 @@ function TransactionDialog({
   );
 }
 
-export function BlackfinApp({
+function BlackfinWorkspace({
   initialPath = "/dashboard",
+  profile,
+  onProfileChange,
+  onLogout,
 }: {
   initialPath?: string;
+  profile: BusinessProfile;
+  onProfileChange: (profile: BusinessProfile) => void;
+  onLogout: () => Promise<void>;
 }) {
   const [period, setPeriod] = useState("7d");
   const [currentPath, setCurrentPath] = useState(
-    initialPath === "/" ? "/dashboard" : initialPath,
+    initialPath === "/" || initialPath === "/login"
+      ? "/dashboard"
+      : initialPath,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [transactionsLoaded, setTransactionsLoaded] = useState(false);
   const [addedTransactions, setAddedTransactions] = useState<
     Array<{
       type: "receita" | "despesa";
@@ -425,6 +425,27 @@ export function BlackfinApp({
       category: string;
     }>
   >([]);
+  useEffect(() => {
+    let stored: typeof addedTransactions = [];
+    try {
+      const saved = window.localStorage.getItem("blackfin_transactions_v1");
+      if (saved) stored = JSON.parse(saved) as typeof addedTransactions;
+    } catch {
+      window.localStorage.removeItem("blackfin_transactions_v1");
+    }
+    const timer = window.setTimeout(() => {
+      setAddedTransactions(stored);
+      setTransactionsLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!transactionsLoaded) return;
+    window.localStorage.setItem(
+      "blackfin_transactions_v1",
+      JSON.stringify(addedTransactions),
+    );
+  }, [addedTransactions, transactionsLoaded]);
   const liveChart = useMemo(() => {
     const next = chartData.map((item) => ({ ...item }));
     for (const transaction of addedTransactions) {
@@ -438,13 +459,25 @@ export function BlackfinApp({
     () => liveChart.reduce((acc, item) => acc + item.receita - item.despesa, 0),
     [liveChart],
   );
-  const consolidated =
-    26982.6 +
-    addedTransactions.reduce(
+  const consolidated = addedTransactions.reduce(
       (sum, item) =>
         sum + (item.type === "receita" ? item.amount : -item.amount),
       0,
     );
+  const revenueTotal = addedTransactions
+    .filter((item) => item.type === "receita")
+    .reduce((sum, item) => sum + item.amount, 0);
+  const expenseTotal = addedTransactions
+    .filter((item) => item.type === "despesa")
+    .reduce((sum, item) => sum + item.amount, 0);
+  const personalBalance = addedTransactions
+    .filter((item) => item.origin === "pessoal")
+    .reduce((sum, item) => sum + (item.type === "receita" ? item.amount : -item.amount), 0);
+  const businessBalance = addedTransactions
+    .filter((item) => item.origin === "barbearia")
+    .reduce((sum, item) => sum + (item.type === "receita" ? item.amount : -item.amount), 0);
+  const formatMoney = (value: number) =>
+    value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const saveTransaction = (transaction: {
     type: "receita" | "despesa";
     origin: "pessoal" | "barbearia";
@@ -529,7 +562,7 @@ export function BlackfinApp({
   };
   return (
     <div className="app-shell">
-      <Sidebar currentPath={currentPath} onNavigate={navigate} />
+      <Sidebar currentPath={currentPath} onNavigate={navigate} profile={profile} />
       <main className="main-panel">
         <header className="topbar">
           <Sheet>
@@ -545,7 +578,7 @@ export function BlackfinApp({
                   Navegação do sistema
                 </SheetDescription>
               </SheetHeader>
-              <Sidebar mobile currentPath={currentPath} onNavigate={navigate} />
+              <Sidebar mobile currentPath={currentPath} onNavigate={navigate} profile={profile} />
             </SheetContent>
           </Sheet>
           <div className="topbar-search">
@@ -557,7 +590,7 @@ export function BlackfinApp({
             <kbd>⌘ K</kbd>
           </div>
           <div className="topbar-actions">
-            <span className="demo-badge">DADOS DEMONSTRATIVOS</span>
+            <span className="demo-badge">AMBIENTE DE TESTES</span>
             <button
               aria-label="Notificações"
               className="notification"
@@ -566,20 +599,25 @@ export function BlackfinApp({
               <Bell />
               <i />
             </button>
-            <div className="avatar">JG</div>
+            <div className="avatar">{initials(profile.ownerName)}</div>
+            <button className="logout-button" onClick={() => void onLogout()} aria-label="Sair do BLACKFIN" title="Sair">
+              <LogOut />
+            </button>
           </div>
         </header>
         {currentPath !== "/dashboard" ? (
           <FeaturePage
             path={currentPath}
             onNewTransaction={() => setDialogOpen(true)}
+            profile={profile}
+            onProfileChange={onProfileChange}
           />
         ) : (
           <div className="dashboard-wrap">
             <section className="page-heading">
               <div>
                 <p>DOMINGO, 20 DE SETEMBRO</p>
-                <h1>Boa noite, Jhonatan.</h1>
+                <h1>Olá, {profile.ownerName.split(" ")[0]}.</h1>
                 <span>
                   Acompanhe sua vida financeira e o desempenho da sua barbearia.
                 </span>
@@ -604,21 +642,21 @@ export function BlackfinApp({
                 </h2>
                 <p>
                   <TrendingUp />
-                  <strong>12,4%</strong> acima do mês anterior
+                  <strong>0 registros</strong> no período atual
                 </p>
               </div>
               <div className="balance-split">
                 <div>
                   <small>PESSOAL</small>
-                  <strong>R$ 8.532,60</strong>
+                  <strong>{formatMoney(personalBalance)}</strong>
                 </div>
                 <div>
                   <small>BARBEARIA</small>
-                  <strong>R$ 18.450,00</strong>
+                  <strong>{formatMoney(businessBalance)}</strong>
                 </div>
                 <div>
                   <small>RESULTADO DO MÊS</small>
-                  <strong>R$ {total.toLocaleString("pt-BR")}</strong>
+                  <strong>{formatMoney(total)}</strong>
                 </div>
               </div>
               <div className="hero-watermark">BF</div>
@@ -626,27 +664,27 @@ export function BlackfinApp({
             <section className="metric-grid">
               <MetricCard
                 eyebrow="Receita da barbearia"
-                value="R$ 24.850,00"
-                change="+12,4%"
+                value={formatMoney(revenueTotal)}
+                change="Sem receitas"
                 icon={BriefcaseBusiness}
               />
               <MetricCard
                 eyebrow="Despesas da barbearia"
-                value="R$ 8.420,00"
-                change="+4,2%"
+                value={formatMoney(expenseTotal)}
+                change="Sem despesas"
                 icon={ArrowDownLeft}
                 tone="red"
               />
               <MetricCard
                 eyebrow="Receitas pessoais"
-                value="R$ 6.780,00"
-                change="+8,1%"
+                value="R$ 0,00"
+                change="Sem receitas"
                 icon={ArrowUpRight}
               />
               <MetricCard
                 eyebrow="Despesas pessoais"
-                value="R$ 3.247,40"
-                change="−2,8%"
+                value="R$ 0,00"
+                change="Sem despesas"
                 icon={CreditCard}
                 tone="gold"
               />
@@ -677,11 +715,11 @@ export function BlackfinApp({
                 <div className="chart-legend">
                   <span>
                     <i />
-                    Receitas <strong>R$ 32.480</strong>
+                    Receitas <strong>{formatMoney(revenueTotal)}</strong>
                   </span>
                   <span>
                     <i className="expense-dot" />
-                    Despesas <strong>R$ 10.240</strong>
+                    Despesas <strong>{formatMoney(expenseTotal)}</strong>
                   </span>
                 </div>
                 <div className="chart-wrap">
@@ -758,24 +796,23 @@ export function BlackfinApp({
                 </div>
                 <div className="insight-primary">
                   <small>PRINCIPAL DESTAQUE</small>
-                  <strong>Seu faturamento cresceu 12,4%</strong>
+                  <strong>Seu ambiente está pronto</strong>
                   <p>
-                    Você recebeu R$ 2.740,00 a mais que no mesmo período do mês
-                    anterior.
+                    Adicione as primeiras movimentações para gerar análises financeiras.
                   </p>
                 </div>
                 <div className="insight-row">
                   <span />
                   <div>
-                    <strong>Despesas sob controle</strong>
-                    <p>Custos operacionais caíram 2,8%.</p>
+                    <strong>Nenhuma despesa cadastrada</strong>
+                    <p>Seus indicadores começarão do zero.</p>
                   </div>
                 </div>
                 <div className="insight-row gold">
                   <span />
                   <div>
-                    <strong>Produtos pedem atenção</strong>
-                    <p>Representam 31% dos gastos do mês.</p>
+                    <strong>Sem alertas financeiros</strong>
+                    <p>Cadastre contas e vencimentos para receber avisos.</p>
                   </div>
                 </div>
                 <button className="text-action">
@@ -803,6 +840,13 @@ export function BlackfinApp({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {addedTransactions.length === 0 && transactions.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="empty-table">
+                        Nenhuma movimentação cadastrada.
+                      </TableCell>
+                    </TableRow>
+                  )}
                   {[
                     ...addedTransactions.map((item) => ({
                       icon:
@@ -867,35 +911,28 @@ export function BlackfinApp({
               Atualizações importantes da sua operação.
             </DialogDescription>
           </DialogHeader>
-          <div className="notification-list">
-            <div>
-              <span className="warning" />
-              <p>
-                <strong>Conta vencendo hoje</strong>
-                <small>
-                  O boleto do fornecedor vence hoje, no valor de R$ 1.240,00.
-                </small>
-              </p>
-            </div>
-            <div>
-              <span />
-              <p>
-                <strong>Faturamento em alta</strong>
-                <small>
-                  Suas receitas cresceram 12,4% em relação ao mês anterior.
-                </small>
-              </p>
-            </div>
-            <div>
-              <span className="gold" />
-              <p>
-                <strong>Comprovante aguardando revisão</strong>
-                <small>Confirme os dados antes de gerar o lançamento.</small>
-              </p>
-            </div>
-          </div>
+          <div className="empty-list">Nenhuma notificação no momento.</div>
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+export function BlackfinApp({
+  initialPath = "/dashboard",
+}: {
+  initialPath?: string;
+}) {
+  return (
+    <AuthFlow>
+      {(profile, updateProfile, logout) => (
+        <BlackfinWorkspace
+          initialPath={initialPath}
+          profile={profile}
+          onProfileChange={updateProfile}
+          onLogout={logout}
+        />
+      )}
+    </AuthFlow>
   );
 }

@@ -920,6 +920,147 @@
   font-size: 8px;
   margin-top: 12px;
 }
+.auth-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 34px;
+  background: #060706;
+  color: #c5a467;
+}
+.auth-loading > svg,
+.spin {
+  animation: auth-spin 0.9s linear infinite;
+}
+@keyframes auth-spin { to { transform: rotate(360deg); } }
+.auth-security-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 34px;
+  color: #6f8f80;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.auth-security-note svg { width: 17px; }
+.auth-input-icon { position: relative; }
+.auth-input-icon > svg:first-child {
+  position: absolute;
+  z-index: 2;
+  left: 13px;
+  top: 12px;
+  width: 16px;
+  height: 16px;
+  color: #73664f;
+}
+.auth-input-icon input { padding-left: 40px; width: 100%; }
+.auth-error {
+  color: #e08a83 !important;
+  background: #2b1717;
+  border: 1px solid #552b28;
+  border-radius: 7px;
+  padding: 10px 12px;
+  margin: 14px 0 0 !important;
+  font-size: 10px !important;
+  letter-spacing: 0 !important;
+}
+button.login-button { width: 100%; border: 0; margin-top: 18px; }
+button.login-button svg { width: 16px; }
+.onboarding-page {
+  min-height: 100vh;
+  padding: 34px;
+  background:
+    radial-gradient(circle at 15% 15%, #17312650, transparent 32%),
+    radial-gradient(circle at 90% 80%, #6a522322, transparent 28%),
+    #070807;
+  display: grid;
+  place-items: center;
+}
+.onboarding-shell {
+  width: min(920px, 100%);
+  border: 1px solid #28251f;
+  border-radius: 18px;
+  background: #0d0f0eee;
+  box-shadow: 0 35px 90px #0009;
+  overflow: hidden;
+}
+.onboarding-shell > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 22px 30px;
+  border-bottom: 1px solid #23231f;
+}
+.onboarding-brand { display: flex; align-items: center; gap: 12px; letter-spacing: .18em; }
+.onboarding-brand span { border: 1px solid #a88d59; color: #c5a467; padding: 7px; font: 12px Georgia, serif; }
+.onboarding-step { color: #806f50; font-size: 8px; letter-spacing: .14em; }
+.onboarding-copy { padding: 38px 40px 18px; max-width: 700px; }
+.onboarding-copy > p { color: #aa8d57; font-size: 8px; letter-spacing: .17em; }
+.onboarding-copy h1 { margin: 9px 0; font: 500 32px Georgia, serif; }
+.onboarding-copy span { color: #777973; font-size: 11px; line-height: 1.7; }
+.onboarding-form {
+  padding: 18px 40px 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.onboarding-form > label,
+.onboarding-location label { display: grid; gap: 7px; color: #a09f97; font-size: 10px; }
+.onboarding-form em { color: #c5a467; font-style: normal; }
+.onboarding-form input { height: 43px; background: #111310; border-color: #2a2b26; }
+.onboarding-location { display: grid; grid-template-columns: 1fr 90px; gap: 12px; }
+.onboarding-form .auth-error,
+.onboarding-submit { grid-column: 1 / -1; }
+.onboarding-submit { height: 46px; }
+.logout-button {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #292923;
+  border-radius: 50%;
+  background: #111;
+  color: #777;
+}
+.logout-button:hover { color: #d3b26f; border-color: #5a4b31; }
+.logout-button svg { width: 15px; }
+.empty-list,
+.empty-table {
+  color: #666a64 !important;
+  text-align: center !important;
+  padding: 34px !important;
+  font-size: 11px;
+}
+.empty-team {
+  grid-column: 1 / -1;
+  min-height: 260px;
+  border: 1px dashed #34342d;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #777;
+}
+.empty-team > svg { width: 28px; color: #9b824f; }
+.empty-team strong { color: #ddd; }
+.empty-team p { margin: 0 0 8px; font-size: 10px; }
+@media (max-width: 680px) {
+  .onboarding-page { padding: 12px; }
+  .onboarding-shell > header,
+  .onboarding-copy,
+  .onboarding-form { padding-left: 20px; padding-right: 20px; }
+  .onboarding-form { grid-template-columns: 1fr; }
+  .onboarding-form .auth-error,
+  .onboarding-submit { grid-column: 1; }
+  .onboarding-copy h1 { font-size: 27px; }
+  .onboarding-step { display: none; }
+}
 @media (max-width: 1050px) {
   .feature-stats {
     grid-template-columns: repeat(2, 1fr);

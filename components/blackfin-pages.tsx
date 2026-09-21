@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownLeft,
@@ -15,10 +14,8 @@ import {
   Clock3,
   Download,
   FileSpreadsheet,
-  FileText,
   Lightbulb,
   Plus,
-  ReceiptText,
   Search,
   Settings,
   ShieldCheck,
@@ -28,7 +25,6 @@ import {
   UserPlus,
   UsersRound,
   WalletCards,
-  X,
 } from "lucide-react";
 import {
   Bar,
@@ -69,7 +65,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-type PageProps = { path: string; onNewTransaction: () => void };
+import type { BusinessProfile } from "@/components/auth-flow";
+
+type PageProps = {
+  path: string;
+  onNewTransaction: () => void;
+  profile: BusinessProfile;
+  onProfileChange: (profile: BusinessProfile) => void;
+};
 type Tx = {
   date: string;
   description: string;
@@ -79,66 +82,20 @@ type Tx = {
   status: string;
   value: number;
 };
-const txs: Tx[] = [
-  {
-    date: "20 set",
-    description: "Serviços — sábado",
-    category: "Serviços",
-    origin: "Barbearia",
-    type: "Receita",
-    status: "Recebido",
-    value: 2840,
-  },
-  {
-    date: "19 set",
-    description: "Fornecedor Navalha & Cia.",
-    category: "Produtos",
-    origin: "Barbearia",
-    type: "Despesa",
-    status: "Pago",
-    value: 687.4,
-  },
-  {
-    date: "18 set",
-    description: "Combustível",
-    category: "Transporte",
-    origin: "Pessoal",
-    type: "Despesa",
-    status: "Pago",
-    value: 220,
-  },
-  {
-    date: "17 set",
-    description: "Corte + barba",
-    category: "Serviços",
-    origin: "Barbearia",
-    type: "Receita",
-    status: "Recebido",
-    value: 148,
-  },
-  {
-    date: "16 set",
-    description: "Assinatura de software",
-    category: "Operacional",
-    origin: "Barbearia",
-    type: "Despesa",
-    status: "Pago",
-    value: 89.9,
-  },
-];
+const txs: Tx[] = [];
 const reportData = [
-  { m: "Abr", r: 18500, d: 7200 },
-  { m: "Mai", r: 21300, d: 8100 },
-  { m: "Jun", r: 20100, d: 7600 },
-  { m: "Jul", r: 23800, d: 9000 },
-  { m: "Ago", r: 22100, d: 8460 },
-  { m: "Set", r: 24850, d: 8420 },
+  { m: "Abr", r: 0, d: 0 },
+  { m: "Mai", r: 0, d: 0 },
+  { m: "Jun", r: 0, d: 0 },
+  { m: "Jul", r: 0, d: 0 },
+  { m: "Ago", r: 0, d: 0 },
+  { m: "Set", r: 0, d: 0 },
 ];
 const categories = [
-  { name: "Produtos", value: 31, color: "#c5a467" },
-  { name: "Aluguel", value: 26, color: "#72d6ad" },
-  { name: "Comissões", value: 22, color: "#7299d6" },
-  { name: "Outros", value: 21, color: "#5f5f5f" },
+  { name: "Produtos", value: 0, color: "#c5a467" },
+  { name: "Aluguel", value: 0, color: "#72d6ad" },
+  { name: "Comissões", value: 0, color: "#7299d6" },
+  { name: "Outros", value: 0, color: "#5f5f5f" },
 ];
 const money = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -205,6 +162,13 @@ function TransactionTable({ rows = txs }: { rows?: Tx[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
+          {rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={6} className="empty-table">
+                Nenhuma movimentação cadastrada.
+              </TableCell>
+            </TableRow>
+          )}
           {rows.map((tx, i) => (
             <TableRow key={`${tx.description}-${i}`}>
               <TableCell>{tx.date}</TableCell>
@@ -312,27 +276,27 @@ function FinancePage({
       <div className="feature-stats">
         <Stat
           label={business ? "Faturamento" : "Saldo atual"}
-          value={business ? "R$ 24.850,00" : "R$ 8.532,60"}
-          detail="+12,4% este mês"
+          value="R$ 0,00"
+          detail="Nenhum lançamento"
           icon={business ? BriefcaseBusiness : WalletCards}
         />
         <Stat
           label="Despesas"
-          value={business ? "R$ 8.420,00" : "R$ 3.247,40"}
-          detail="Dentro do planejado"
+          value="R$ 0,00"
+          detail="Nenhuma despesa"
           tone="red"
           icon={ArrowDownLeft}
         />
         <Stat
           label={business ? "Lucro estimado" : "Saldo líquido"}
-          value={business ? "R$ 16.430,00" : "R$ 3.532,60"}
-          detail="66,1% de margem"
+          value="R$ 0,00"
+          detail="Aguardando dados"
           icon={TrendingUp}
         />
         <Stat
           label={business ? "Contas a pagar" : "Limite mensal"}
-          value={business ? "R$ 2.180,00" : "68% utilizado"}
-          detail={business ? "4 compromissos" : "R$ 1.530 disponíveis"}
+          value="R$ 0,00"
+          detail="Nenhum compromisso"
           tone="gold"
           icon={Calendar}
         />
@@ -349,11 +313,11 @@ function FinancePage({
               Categoria
             </Button>
           </div>
-          {cats.map((cat, i) => (
+          {cats.map((cat) => (
             <div className="category-line" key={cat}>
               <span>{cat}</span>
-              <Progress value={[31, 26, 18, 14, 11][i]} />
-              <strong>{[31, 26, 18, 14, 11][i]}%</strong>
+              <Progress value={0} />
+              <strong>0%</strong>
             </div>
           ))}
         </div>
@@ -365,13 +329,11 @@ function FinancePage({
             </div>
           </div>
           <div className="score-ring">
-            <span>{business ? "82" : "76"}</span>
+            <span>0</span>
             <small>/ 100</small>
           </div>
           <p className="score-copy">
-            {business
-              ? "Seu negócio mantém uma margem saudável. Continue controlando produtos e comissões."
-              : "Seu orçamento está equilibrado. Gastos com lazer estão próximos do limite."}
+            Adicione movimentações para calcular sua saúde financeira.
           </p>
         </div>
       </div>
@@ -518,39 +480,14 @@ function ReceiptsPage({ onNew }: { onNew: () => void }) {
             Lançar manualmente
           </Button>
         </div>
-        <div className="document-row">
-          <ReceiptText />
-          <div>
-            <strong>comprovante_pix_2009.jpg</strong>
-            <small>Produtos · R$ 187,50</small>
-          </div>
-          <span>Confirmado</span>
-        </div>
-        <div className="document-row">
-          <FileText />
-          <div>
-            <strong>nota_fiscal_equipamentos.pdf</strong>
-            <small>Equipamentos · aguardando revisão</small>
-          </div>
-          <span className="pending-text">Revisar</span>
-        </div>
+        <div className="empty-list">Nenhum comprovante enviado.</div>
       </div>
     </>
   );
 }
 
 function AccountsPage({ receivable = false }: { receivable?: boolean }) {
-  const rows = receivable
-    ? [
-        { n: "Pacote mensal — Carlos", v: 320, d: "Hoje", s: "A receber" },
-        { n: "Evento corporativo", v: 1800, d: "24 set", s: "Próximo" },
-        { n: "Venda de produtos", v: 460, d: "28 set", s: "Próximo" },
-      ]
-    : [
-        { n: "Energia elétrica", v: 486.2, d: "18 set", s: "Vencida" },
-        { n: "Fornecedor de produtos", v: 1240, d: "Hoje", s: "Hoje" },
-        { n: "Internet empresarial", v: 159.9, d: "25 set", s: "Próximo" },
-      ];
+  const rows: Array<{ n: string; v: number; d: string; s: string }> = [];
   return (
     <>
       <PageHeader
@@ -571,21 +508,21 @@ function AccountsPage({ receivable = false }: { receivable?: boolean }) {
       <div className="feature-stats">
         <Stat
           label={receivable ? "Total a receber" : "Total em aberto"}
-          value={receivable ? "R$ 6.280,00" : "R$ 4.218,90"}
+          value="R$ 0,00"
           detail="Próximos 30 dias"
           icon={CircleDollarSign}
         />
         <Stat
           label={receivable ? "Recebidos" : "Vencidas"}
-          value={receivable ? "R$ 3.840,00" : "R$ 486,20"}
-          detail={receivable ? "Este mês" : "1 conta requer atenção"}
+          value="R$ 0,00"
+          detail="Nenhum registro"
           tone={receivable ? "green" : "red"}
           icon={receivable ? ArrowUpRight : AlertTriangle}
         />
         <Stat
           label="Vencendo hoje"
-          value={receivable ? "R$ 320,00" : "R$ 1.240,00"}
-          detail="1 compromisso"
+          value="R$ 0,00"
+          detail="Nenhum compromisso"
           tone="gold"
           icon={Clock3}
         />
@@ -615,12 +552,13 @@ function AccountsPage({ receivable = false }: { receivable?: boolean }) {
             </Button>
           </div>
         ))}
+        {rows.length === 0 && <div className="empty-list">Nenhuma conta cadastrada.</div>}
       </div>
     </>
   );
 }
 
-function ReportsPage() {
+function ReportsPage({ profile }: { profile: BusinessProfile }) {
   const [month, setMonth] = useState("setembro-2026");
   const [pdfReady, setPdfReady] = useState(false);
   const months = [
@@ -661,14 +599,14 @@ function ReportsPage() {
     doc.text(label.toUpperCase(), 16, 34);
     doc.setTextColor(25, 25, 25);
     doc.setFontSize(9);
-    doc.text("Barbearia Ferreira", 16, 53);
+    doc.text(profile.businessName, 16, 53);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
     doc.text("Resumo executivo", 16, 64);
     const cards = [
-      ["Receitas", "R$ 31.630,00"],
-      ["Despesas", "R$ 11.667,40"],
-      ["Resultado", "R$ 19.962,60"],
+      ["Receitas", "R$ 0,00"],
+      ["Despesas", "R$ 0,00"],
+      ["Resultado", "R$ 0,00"],
     ];
     cards.forEach(([title, value], index) => {
       const x = 16 + index * 61;
@@ -721,7 +659,7 @@ function ReportsPage() {
     doc.setFontSize(8);
     doc.setTextColor(110, 110, 110);
     doc.text(
-      "Documento gerado pelo BLACKFIN. Dados demonstrativos devem ser substituidos por dados reais.",
+      "Documento gerado pelo BLACKFIN.",
       16,
       Math.min(285, finalY + 12),
     );
@@ -909,11 +847,7 @@ function HistoryPage() {
             <small>2026</small>
             <strong>{m}</strong>
             <span>
-              {
-                ["R$ 14,2 mil", "R$ 16,8 mil", "R$ 18,1 mil"][
-                  months.indexOf(m) % 3
-                ]
-              }
+              R$ 0,00
             </span>
           </button>
         ))}
@@ -927,20 +861,20 @@ function HistoryPage() {
       <div className="feature-stats">
         <Stat
           label="Receitas"
-          value="R$ 31.630,00"
-          detail="18 lançamentos"
+          value="R$ 0,00"
+          detail="Nenhum lançamento"
           icon={ArrowUpRight}
         />
         <Stat
           label="Despesas"
-          value="R$ 11.667,40"
-          detail="24 lançamentos"
+          value="R$ 0,00"
+          detail="Nenhum lançamento"
           tone="red"
           icon={ArrowDownLeft}
         />
         <Stat
           label="Saldo"
-          value="R$ 19.962,60"
+          value="R$ 0,00"
           detail="Resultado consolidado"
           icon={TrendingUp}
         />
@@ -951,24 +885,46 @@ function HistoryPage() {
 }
 
 function PeoplePage({ commissions = false }: { commissions?: boolean }) {
-  const [barbers, setBarbers] = useState([
-    { initial: "RF", name: "Rafael Ferreira", pct: 35, sales: 7240 },
-    { initial: "LM", name: "Lucas Martins", pct: 35, sales: 6180 },
-    { initial: "AS", name: "André Silva", pct: 30, sales: 3860 },
-    { initial: "MP", name: "Marcos Pereira", pct: 30, sales: 1140 },
-  ]);
+  const [barbers, setBarbers] = useState<Array<{ initial: string; name: string; pct: number; sales: number }>>([]);
+  const [barbersLoaded, setBarbersLoaded] = useState(false);
   const [barberOpen, setBarberOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [name, setName] = useState("");
   const [percent, setPercent] = useState("35");
-  const [selectedBarber, setSelectedBarber] = useState("Rafael Ferreira");
+  const [selectedBarber, setSelectedBarber] = useState("");
   const [serviceValue, setServiceValue] = useState("");
   const [commissionValue, setCommissionValue] = useState("");
+  useEffect(() => {
+    let stored: typeof barbers = [];
+    try {
+      const saved = window.localStorage.getItem("blackfin_barbers_v1");
+      if (saved) {
+        stored = JSON.parse(saved) as typeof barbers;
+      }
+    } catch {
+      window.localStorage.removeItem("blackfin_barbers_v1");
+    }
+    const timer = window.setTimeout(() => {
+      setBarbers(stored);
+      setSelectedBarber(stored[0]?.name ?? "");
+      setBarbersLoaded(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!barbersLoaded) return;
+    window.localStorage.setItem("blackfin_barbers_v1", JSON.stringify(barbers));
+  }, [barbers, barbersLoaded]);
   const current =
     barbers.find((item) => item.name === selectedBarber) ?? barbers[0];
-  const calculated = serviceValue
+  const calculated = serviceValue && current
     ? (Number(serviceValue.replace(",", ".")) * current.pct) / 100
     : 0;
+  const totalSales = barbers.reduce((sum, barber) => sum + barber.sales, 0);
+  const totalCommissions = barbers.reduce(
+    (sum, barber) => sum + (barber.sales * barber.pct) / 100,
+    0,
+  );
   const addBarber = () => {
     const pct = Math.min(100, Math.max(0, Number(percent)));
     if (!name.trim() || !Number.isFinite(pct)) return;
@@ -988,7 +944,7 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
   };
   const addService = () => {
     const value = Number(serviceValue.replace(",", "."));
-    if (!value) return;
+    if (!value || !current) return;
     setBarbers((items) =>
       items.map((item) =>
         item.name === selectedBarber
@@ -1014,32 +970,36 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
           <Button
             className="gold-button"
             onClick={() =>
-              commissions ? setServiceOpen(true) : setBarberOpen(true)
+              commissions && barbers.length > 0
+                ? setServiceOpen(true)
+                : setBarberOpen(true)
             }
           >
             <UserPlus />
-            {commissions ? "Registrar serviço" : "Novo barbeiro"}
+            {commissions && barbers.length > 0
+              ? "Registrar serviço"
+              : "Novo barbeiro"}
           </Button>
         }
       />
       <div className="feature-stats">
         <Stat
           label={commissions ? "Total vendido" : "Profissionais ativos"}
-          value={commissions ? "R$ 18.420,00" : "4"}
+          value={commissions ? money(totalSales) : String(barbers.length)}
           detail="No mês atual"
           icon={UsersRound}
         />
         <Stat
           label={commissions ? "Total de comissões" : "Atendimentos"}
-          value={commissions ? "R$ 6.447,00" : "186"}
-          detail={commissions ? "35% médio" : "Este mês"}
+          value={commissions ? money(totalCommissions) : "0"}
+          detail={commissions ? "Calculado por profissional" : "Este mês"}
           tone="gold"
           icon={CircleDollarSign}
         />
         <Stat
           label={commissions ? "Líquido da barbearia" : "Ticket médio"}
-          value={commissions ? "R$ 11.973,00" : "R$ 133,60"}
-          detail="+8,4% vs. agosto"
+          value={commissions ? money(totalSales - totalCommissions) : "R$ 0,00"}
+          detail="Dados do período atual"
           icon={TrendingUp}
         />
       </div>
@@ -1067,6 +1027,16 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
             </Button>
           </article>
         ))}
+        {barbers.length === 0 && (
+          <div className="empty-team">
+            <UsersRound />
+            <strong>Nenhum barbeiro cadastrado</strong>
+            <p>Adicione o primeiro profissional para começar seus testes.</p>
+            <Button className="gold-button" onClick={() => setBarberOpen(true)}>
+              <UserPlus /> Novo barbeiro
+            </Button>
+          </div>
+        )}
       </div>
       <Dialog open={barberOpen} onOpenChange={setBarberOpen}>
         <DialogContent className="transaction-dialog">
@@ -1162,7 +1132,7 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
             </label>
             <label>
               Percentual aplicado
-              <Input value={`${current.pct}%`} readOnly />
+              <Input value={`${current?.pct ?? 0}%`} readOnly />
             </label>
             <Button className="gold-button wide" onClick={addService}>
               <Check />
@@ -1189,18 +1159,17 @@ function InsightsPage() {
             <Sparkles />
           </span>
           <p>DESTAQUE DO MÊS</p>
-          <h2>Seu faturamento aumentou 12,4%</h2>
+          <h2>Seu ambiente está pronto</h2>
           <p>
-            O crescimento veio principalmente dos serviços combinados de corte e
-            barba, com alta de 18%.
+            Cadastre suas primeiras movimentações para receber análises e recomendações.
           </p>
           <Button variant="outline">Ver relatório relacionado</Button>
         </article>
         {[
-          ["Maior gasto", "Produtos representam 31% das despesas.", "gold"],
-          ["Melhor dia", "Sexta-feira concentra 24% do faturamento.", "green"],
-          ["Atenção", "Uma conta está vencida há dois dias.", "red"],
-          ["Oportunidade", "Seu ticket médio cresceu R$ 12,40.", "blue"],
+          ["Maior gasto", "Aguardando movimentações.", "gold"],
+          ["Melhor dia", "Aguardando movimentações.", "green"],
+          ["Atenção", "Nenhuma pendência cadastrada.", "red"],
+          ["Oportunidade", "Comece registrando seus serviços.", "blue"],
         ].map(([title, copy, tone]) => (
           <article className={`mini-insight ${tone}`} key={title}>
             <Lightbulb />
@@ -1214,8 +1183,19 @@ function InsightsPage() {
   );
 }
 
-function SettingsPage() {
+function SettingsPage({
+  profile,
+  onProfileChange,
+}: {
+  profile: BusinessProfile;
+  onProfileChange: (profile: BusinessProfile) => void;
+}) {
   const [saved, setSaved] = useState(false);
+  const [form, setForm] = useState(profile);
+  const update = (field: keyof BusinessProfile, value: string) => {
+    setSaved(false);
+    setForm((current) => ({ ...current, [field]: value }));
+  };
   return (
     <>
       <PageHeader
@@ -1246,7 +1226,7 @@ function SettingsPage() {
             </div>
           </div>
           <div className="profile-photo">
-            <div>JG</div>
+            <div>{profile.ownerName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
             <Button variant="outline" size="sm">
               Alterar foto
             </Button>
@@ -1254,15 +1234,15 @@ function SettingsPage() {
           <div className="review-form">
             <label>
               Nome
-              <Input defaultValue="Jhonatan Gabriel" />
+              <Input value={form.ownerName} onChange={(event) => update("ownerName", event.target.value)} />
             </label>
             <label>
               E-mail
-              <Input defaultValue="jhonatan@blackfin.com.br" type="email" />
+              <Input value={form.email} onChange={(event) => update("email", event.target.value)} type="email" />
             </label>
             <label className="wide">
               Nome da barbearia
-              <Input defaultValue="Barbearia Ferreira" />
+              <Input value={form.businessName} onChange={(event) => update("businessName", event.target.value)} />
             </label>
           </div>
           <div className="settings-switch">
@@ -1279,7 +1259,7 @@ function SettingsPage() {
             </div>
             <Switch defaultChecked />
           </div>
-          <Button className="gold-button" onClick={() => setSaved(true)}>
+          <Button className="gold-button" onClick={() => { onProfileChange(form); setSaved(true); }}>
             {saved ? (
               <>
                 <Check />
@@ -1295,57 +1275,8 @@ function SettingsPage() {
   );
 }
 
-function LoginPage() {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="login-page">
-      <div className="login-brand">
-        <div className="login-mark">BF</div>
-        <p>BLACKFIN</p>
-        <span>
-          Controle financeiro inteligente para quem leva o negócio a sério.
-        </span>
-      </div>
-      <form className="login-card" onSubmit={(e) => e.preventDefault()}>
-        <p>ACESSO SEGURO</p>
-        <h1>Bem-vindo de volta.</h1>
-        <span>Entre para continuar no seu painel financeiro.</span>
-        <label>
-          E-mail
-          <Input type="email" placeholder="voce@empresa.com.br" />
-        </label>
-        <label>
-          Senha
-          <div className="password-field">
-            <Input type={show ? "text" : "password"} placeholder="Sua senha" />
-            <button type="button" onClick={() => setShow(!show)}>
-              {show ? <X /> : <ShieldCheck />}
-            </button>
-          </div>
-        </label>
-        <div className="login-options">
-          <label>
-            <input type="checkbox" />
-            Lembrar acesso
-          </label>
-          <button type="button">Esqueci minha senha</button>
-        </div>
-        <Link
-          className="login-button"
-          href="/signin-with-chatgpt?return_to=%2Fdashboard"
-          target="_top"
-        >
-          Entrar com segurança
-        </Link>
-        <small>A autenticação é protegida pela conta do seu workspace.</small>
-      </form>
-    </div>
-  );
-}
-
-export function FeaturePage({ path, onNewTransaction }: PageProps) {
+export function FeaturePage({ path, onNewTransaction, profile, onProfileChange }: PageProps) {
   const content = useMemo(() => {
-    if (path === "/login") return <LoginPage />;
     if (path === "/financeiro/pessoal")
       return <FinancePage onNew={onNewTransaction} />;
     if (path === "/financeiro/barbearia")
@@ -1356,17 +1287,13 @@ export function FeaturePage({ path, onNewTransaction }: PageProps) {
       return <ReceiptsPage onNew={onNewTransaction} />;
     if (path === "/contas-pagar") return <AccountsPage />;
     if (path === "/contas-receber") return <AccountsPage receivable />;
-    if (path === "/relatorios") return <ReportsPage />;
+    if (path === "/relatorios") return <ReportsPage profile={profile} />;
     if (path === "/historico") return <HistoryPage />;
     if (path === "/barbeiros") return <PeoplePage />;
     if (path === "/comissoes") return <PeoplePage commissions />;
     if (path === "/insights") return <InsightsPage />;
-    if (path === "/configuracoes") return <SettingsPage />;
+    if (path === "/configuracoes") return <SettingsPage profile={profile} onProfileChange={onProfileChange} />;
     return <TransactionsPage onNew={onNewTransaction} />;
-  }, [path, onNewTransaction]);
-  return path === "/login" ? (
-    content
-  ) : (
-    <div className="feature-wrap">{content}</div>
-  );
+  }, [path, onNewTransaction, profile, onProfileChange]);
+  return <div className="feature-wrap">{content}</div>;
 }
