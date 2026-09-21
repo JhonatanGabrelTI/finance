@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   ArrowDownLeft,
@@ -1317,13 +1318,13 @@ function LoginPage() {
           </label>
           <button type="button">Esqueci minha senha</button>
         </div>
-        <a
+        <Link
           className="login-button"
           href="/signin-with-chatgpt?return_to=%2Fdashboard"
           target="_top"
         >
           Entrar com segurança
-        </a>
+        </Link>
         <small>A autenticação é protegida pela conta do seu workspace.</small>
       </form>
     </div>

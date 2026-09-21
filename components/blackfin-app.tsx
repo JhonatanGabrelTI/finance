@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -179,7 +180,7 @@ function Sidebar({
         ))}
       </nav>
       <div className="sidebar-bottom">
-        <a
+        <Link
           href="/configuracoes"
           onClick={(event) => {
             event.preventDefault();
@@ -188,7 +189,7 @@ function Sidebar({
         >
           <Settings />
           <span>Configurações</span>
-        </a>
+        </Link>
         <div className="profile-mini">
           <span>JG</span>
           <div>

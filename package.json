@@ -64,6 +64,7 @@
   },
   "type": "module",
   "overrides": {
+    "baseline-browser-mapping": "2.11.0",
     "miniflare": {
       "sharp": "0.35.4"
     }
