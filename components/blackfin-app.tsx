@@ -68,7 +68,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FeaturePage } from "@/components/blackfin-pages";
+import { FeaturePage, type FinancialTransaction } from "@/components/blackfin-pages";
 import { AuthFlow, type BusinessProfile } from "@/components/auth-flow";
 import type { Workspace } from "@/lib/auth-session";
 
@@ -419,16 +419,7 @@ function BlackfinWorkspace({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [transactionsLoaded, setTransactionsLoaded] = useState(false);
-  const [addedTransactions, setAddedTransactions] = useState<
-    Array<{
-      type: "receita" | "despesa";
-      origin: "pessoal" | "barbearia";
-      amount: number;
-      description: string;
-      date: string;
-      category: string;
-    }>
-  >([]);
+  const [addedTransactions, setAddedTransactions] = useState<FinancialTransaction[]>([]);
   useEffect(() => {
     let stored: typeof addedTransactions = [];
     try {
@@ -483,14 +474,7 @@ function BlackfinWorkspace({
     .reduce((sum, item) => sum + (item.type === "receita" ? item.amount : -item.amount), 0);
   const formatMoney = (value: number) =>
     value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  const saveTransaction = (transaction: {
-    type: "receita" | "despesa";
-    origin: "pessoal" | "barbearia";
-    amount: number;
-    description: string;
-    date: string;
-    category: string;
-  }) => {
+  const saveTransaction = (transaction: FinancialTransaction) => {
     setAddedTransactions((items) => [transaction, ...items]);
     void fetch("/api/transactions", {
       method: "POST",
@@ -617,6 +601,7 @@ function BlackfinWorkspace({
             profile={profile}
             onProfileChange={onProfileChange}
             workspace={workspace}
+            transactions={addedTransactions}
           />
         ) : (
           <div className="dashboard-wrap">
@@ -648,7 +633,7 @@ function BlackfinWorkspace({
                 </h2>
                 <p>
                   <TrendingUp />
-                  <strong>0 registros</strong> no período atual
+                  <strong>{addedTransactions.length} {addedTransactions.length === 1 ? "registro" : "registros"}</strong> no período atual
                 </p>
               </div>
               <div className="balance-split">

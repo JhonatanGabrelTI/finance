@@ -75,6 +75,15 @@ type PageProps = {
   profile: BusinessProfile;
   onProfileChange: (profile: BusinessProfile) => void;
   workspace: Workspace;
+  transactions: FinancialTransaction[];
+};
+export type FinancialTransaction = {
+  type: "receita" | "despesa";
+  origin: "pessoal" | "barbearia";
+  amount: number;
+  description: string;
+  date: string;
+  category: string;
 };
 type Tx = {
   date: string;
@@ -85,7 +94,17 @@ type Tx = {
   status: string;
   value: number;
 };
-const txs: Tx[] = [];
+function toTableRows(transactions: FinancialTransaction[]): Tx[] {
+  return transactions.map((transaction) => ({
+    date: transaction.date.split("-").reverse().join("/"),
+    description: transaction.description,
+    category: transaction.category,
+    origin: transaction.origin === "barbearia" ? "Empresa" : "Pessoal",
+    type: transaction.type === "receita" ? "Receita" : "Despesa",
+    status: "Pago",
+    value: transaction.amount,
+  }));
+}
 const reportData = [
   { m: "Abr", r: 0, d: 0 },
   { m: "Mai", r: 0, d: 0 },
@@ -150,7 +169,7 @@ function Stat({
   );
 }
 
-function TransactionTable({ rows = txs }: { rows?: Tx[] }) {
+function TransactionTable({ rows = [] }: { rows?: Tx[] }) {
   return (
     <div className="data-card">
       <Table>
@@ -202,10 +221,10 @@ function TransactionTable({ rows = txs }: { rows?: Tx[] }) {
   );
 }
 
-function TransactionsPage({ onNew }: { onNew: () => void }) {
+function TransactionsPage({ onNew, transactions }: { onNew: () => void; transactions: FinancialTransaction[] }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("todos");
-  const visible = txs.filter(
+  const visible = toTableRows(transactions).filter(
     (tx) =>
       (filter === "todos" || tx.type.toLowerCase() === filter) &&
       tx.description.toLowerCase().includes(search.toLowerCase()),
@@ -252,13 +271,23 @@ function TransactionsPage({ onNew }: { onNew: () => void }) {
 function FinancePage({
   business = false,
   onNew,
+  transactions,
 }: {
   business?: boolean;
   onNew: () => void;
+  transactions: FinancialTransaction[];
 }) {
   const cats = business
     ? ["Produtos", "Comissões", "Aluguel", "Marketing", "Impostos"]
     : ["Moradia", "Alimentação", "Transporte", "Lazer", "Assinaturas"];
+  const rows = toTableRows(transactions);
+  const revenue = transactions.filter((item) => item.type === "receita").reduce((total, item) => total + item.amount, 0);
+  const expenses = transactions.filter((item) => item.type === "despesa").reduce((total, item) => total + item.amount, 0);
+  const balance = revenue - expenses;
+  const expensesByCategory = cats.map((category) => ({
+    category,
+    total: transactions.filter((item) => item.type === "despesa" && item.category === category).reduce((total, item) => total + item.amount, 0),
+  }));
   return (
     <>
       <PageHeader
@@ -279,21 +308,21 @@ function FinancePage({
       <div className="feature-stats">
         <Stat
           label={business ? "Faturamento" : "Saldo atual"}
-          value="R$ 0,00"
-          detail="Nenhum lançamento"
+          value={money(business ? revenue : balance)}
+          detail={`${transactions.length} ${transactions.length === 1 ? "lançamento" : "lançamentos"}`}
           icon={business ? BriefcaseBusiness : WalletCards}
         />
         <Stat
           label="Despesas"
-          value="R$ 0,00"
-          detail="Nenhuma despesa"
+          value={money(expenses)}
+          detail={expenses ? "Atualizado com seus lançamentos" : "Nenhuma despesa"}
           tone="red"
           icon={ArrowDownLeft}
         />
         <Stat
           label={business ? "Lucro estimado" : "Saldo líquido"}
-          value="R$ 0,00"
-          detail="Aguardando dados"
+          value={money(balance)}
+          detail="Resultado atualizado automaticamente"
           icon={TrendingUp}
         />
         <Stat
@@ -316,11 +345,11 @@ function FinancePage({
               Categoria
             </Button>
           </div>
-          {cats.map((cat) => (
-            <div className="category-line" key={cat}>
-              <span>{cat}</span>
-              <Progress value={0} />
-              <strong>0%</strong>
+          {expensesByCategory.map(({ category, total }) => (
+            <div className="category-line" key={category}>
+              <span>{category}</span>
+              <Progress value={expenses ? (total / expenses) * 100 : 0} />
+              <strong>{expenses ? Math.round((total / expenses) * 100) : 0}%</strong>
             </div>
           ))}
         </div>
@@ -332,7 +361,7 @@ function FinancePage({
             </div>
           </div>
           <div className="score-ring">
-            <span>0</span>
+            <span>{transactions.length ? Math.min(100, Math.max(1, Math.round((revenue / Math.max(expenses, 1)) * 50))) : 0}</span>
             <small>/ 100</small>
           </div>
           <p className="score-copy">
@@ -341,9 +370,7 @@ function FinancePage({
         </div>
       </div>
       <TransactionTable
-        rows={txs.filter(
-          (tx) => tx.origin === (business ? "Empresa" : "Pessoal"),
-        )}
+        rows={rows}
       />
     </>
   );
@@ -553,9 +580,22 @@ function AccountsPage({ receivable = false }: { receivable?: boolean }) {
   );
 }
 
-function ReportsPage({ profile, workspace }: { profile: BusinessProfile; workspace: Workspace }) {
+function ReportsPage({ profile, workspace, transactions }: { profile: BusinessProfile; workspace: Workspace; transactions: FinancialTransaction[] }) {
   const [month, setMonth] = useState("setembro-2026");
   const [pdfReady, setPdfReady] = useState(false);
+  const revenue = transactions.filter((item) => item.type === "receita").reduce((total, item) => total + item.amount, 0);
+  const expenses = transactions.filter((item) => item.type === "despesa").reduce((total, item) => total + item.amount, 0);
+  const liveReportData = useMemo(() => {
+    const data = reportData.map((item) => ({ ...item }));
+    const monthIndex: Record<string, number> = { "04": 0, "05": 1, "06": 2, "07": 3, "08": 4, "09": 5 };
+    for (const transaction of transactions) {
+      const index = monthIndex[transaction.date.slice(5, 7)];
+      if (index === undefined) continue;
+      if (transaction.type === "receita") data[index].r += transaction.amount;
+      else data[index].d += transaction.amount;
+    }
+    return data;
+  }, [transactions]);
   const months = [
     ["setembro-2026", "Setembro de 2026"],
     ["agosto-2026", "Agosto de 2026"],
@@ -566,7 +606,7 @@ function ReportsPage({ profile, workspace }: { profile: BusinessProfile; workspa
   const exportCsv = () => {
     const csv =
       "Mês,Receitas,Despesas\n" +
-      reportData.map((i) => `${i.m},${i.r},${i.d}`).join("\n");
+      liveReportData.map((i) => `${i.m},${i.r},${i.d}`).join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     a.download = "blackfin-relatorio.csv";
@@ -599,9 +639,9 @@ function ReportsPage({ profile, workspace }: { profile: BusinessProfile; workspa
     doc.setFontSize(15);
     doc.text("Resumo executivo", 16, 64);
     const cards = [
-      ["Receitas", "R$ 0,00"],
-      ["Despesas", "R$ 0,00"],
-      ["Resultado", "R$ 0,00"],
+      ["Receitas", money(revenue)],
+      ["Despesas", money(expenses)],
+      ["Resultado", money(revenue - expenses)],
     ];
     cards.forEach(([title, value], index) => {
       const x = 16 + index * 61;
@@ -623,7 +663,7 @@ function ReportsPage({ profile, workspace }: { profile: BusinessProfile; workspa
     autoTable(doc, {
       startY: 106,
       head: [["Data", "Descricao", "Categoria", "Origem", "Status", "Valor"]],
-      body: txs.map((tx) => [
+      body: toTableRows(transactions).map((tx) => [
         tx.date,
         tx.description,
         tx.category,
@@ -722,7 +762,7 @@ function ReportsPage({ profile, workspace }: { profile: BusinessProfile; workspa
               minHeight={0}
               initialDimension={{ width: 1, height: 1 }}
             >
-              <BarChart data={reportData}>
+              <BarChart data={liveReportData}>
                 <CartesianGrid stroke="#ffffff0a" vertical={false} />
                 <XAxis
                   dataKey="m"
@@ -810,7 +850,7 @@ function ReportsPage({ profile, workspace }: { profile: BusinessProfile; workspa
   );
 }
 
-function HistoryPage() {
+function HistoryPage({ transactions }: { transactions: FinancialTransaction[] }) {
   const [month, setMonth] = useState("Setembro");
   const months = [
     "Janeiro",
@@ -826,6 +866,10 @@ function HistoryPage() {
     "Novembro",
     "Dezembro",
   ];
+  const selectedMonth = months.indexOf(month) + 1;
+  const currentTransactions = transactions.filter((transaction) => Number(transaction.date.slice(5, 7)) === selectedMonth);
+  const revenue = currentTransactions.filter((item) => item.type === "receita").reduce((total, item) => total + item.amount, 0);
+  const expenses = currentTransactions.filter((item) => item.type === "despesa").reduce((total, item) => total + item.amount, 0);
   return (
     <>
       <PageHeader
@@ -842,9 +886,7 @@ function HistoryPage() {
           >
             <small>2026</small>
             <strong>{m}</strong>
-            <span>
-              R$ 0,00
-            </span>
+            <span>{money(transactions.filter((transaction) => Number(transaction.date.slice(5, 7)) === months.indexOf(m) + 1).reduce((total, item) => total + (item.type === "receita" ? item.amount : -item.amount), 0))}</span>
           </button>
         ))}
       </div>
@@ -857,25 +899,25 @@ function HistoryPage() {
       <div className="feature-stats">
         <Stat
           label="Receitas"
-          value="R$ 0,00"
-          detail="Nenhum lançamento"
+          value={money(revenue)}
+          detail={`${currentTransactions.length} ${currentTransactions.length === 1 ? "lançamento" : "lançamentos"}`}
           icon={ArrowUpRight}
         />
         <Stat
           label="Despesas"
-          value="R$ 0,00"
-          detail="Nenhum lançamento"
+          value={money(expenses)}
+          detail={expenses ? "Atualizado automaticamente" : "Nenhuma despesa"}
           tone="red"
           icon={ArrowDownLeft}
         />
         <Stat
           label="Saldo"
-          value="R$ 0,00"
+          value={money(revenue - expenses)}
           detail="Resultado consolidado"
           icon={TrendingUp}
         />
       </div>
-      <TransactionTable />
+      <TransactionTable rows={toTableRows(currentTransactions)} />
     </>
   );
 }
@@ -1335,29 +1377,29 @@ function RestrictedPage({ workspace }: { workspace: Workspace }) {
   );
 }
 
-export function FeaturePage({ path, onNewTransaction, profile, onProfileChange, workspace }: PageProps) {
+export function FeaturePage({ path, onNewTransaction, profile, onProfileChange, workspace, transactions }: PageProps) {
   const content = useMemo(() => {
     const businessOnly = ["/financeiro/empresarial", "/produtos", "/barbeiros", "/comissoes"];
     if (workspace === "personal" && businessOnly.includes(path)) return <RestrictedPage workspace={workspace} />;
     if (workspace === "business" && path === "/financeiro/pessoal") return <RestrictedPage workspace={workspace} />;
     if (path === "/financeiro/pessoal")
-      return <FinancePage onNew={onNewTransaction} />;
+      return <FinancePage onNew={onNewTransaction} transactions={transactions} />;
     if (path === "/financeiro/empresarial")
-      return <FinancePage business onNew={onNewTransaction} />;
+      return <FinancePage business onNew={onNewTransaction} transactions={transactions} />;
     if (path === "/produtos" && workspace === "business") return <ProductsPage />;
     if (path === "/movimentacoes")
-      return <TransactionsPage onNew={onNewTransaction} />;
+      return <TransactionsPage onNew={onNewTransaction} transactions={transactions} />;
     if (path === "/comprovantes")
       return <ReceiptsPage onNew={onNewTransaction} workspace={workspace} />;
     if (path === "/contas-pagar") return <AccountsPage />;
     if (path === "/contas-receber") return <AccountsPage receivable />;
-    if (path === "/relatorios") return <ReportsPage profile={profile} workspace={workspace} />;
-    if (path === "/historico") return <HistoryPage />;
+    if (path === "/relatorios") return <ReportsPage profile={profile} workspace={workspace} transactions={transactions} />;
+    if (path === "/historico") return <HistoryPage transactions={transactions} />;
     if (path === "/barbeiros") return <PeoplePage />;
     if (path === "/comissoes") return <PeoplePage commissions />;
     if (path === "/insights") return <InsightsPage workspace={workspace} />;
     if (path === "/configuracoes") return <SettingsPage profile={profile} onProfileChange={onProfileChange} workspace={workspace} />;
-    return <TransactionsPage onNew={onNewTransaction} />;
-  }, [path, onNewTransaction, profile, onProfileChange, workspace]);
+    return <TransactionsPage onNew={onNewTransaction} transactions={transactions} />;
+  }, [path, onNewTransaction, profile, onProfileChange, workspace, transactions]);
   return <div className="feature-wrap">{content}</div>;
 }
