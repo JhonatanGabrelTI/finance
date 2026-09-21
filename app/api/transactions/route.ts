@@ -1,5 +1,5 @@
-import { env } from "cloudflare:workers";
 import { z } from "zod";
+import { getCloudflareBindings } from "@/lib/cloudflare-bindings";
 
 const inputSchema = z.object({
   type: z.enum(["receita", "despesa"]),
@@ -30,7 +30,8 @@ export async function GET(request: Request) {
       { error: "Autenticação necessária." },
       { status: 401 },
     );
-  if (!env.DB)
+  const { DB } = await getCloudflareBindings();
+  if (!DB)
     return Response.json(
       { error: "Banco temporariamente indisponível." },
       { status: 503 },
@@ -38,10 +39,10 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const origin = url.searchParams.get("origin");
   const statement = origin
-    ? env.DB.prepare(
+    ? DB.prepare(
         "SELECT id,type,origin,amount_cents AS amountCents,occurred_on AS occurredOn,description,category,payment_method AS paymentMethod,status,notes,receipt_id AS receiptId FROM transactions WHERE user_id = ? AND origin = ? ORDER BY occurred_on DESC, created_at DESC LIMIT 200",
       ).bind(owner, origin)
-    : env.DB.prepare(
+    : DB.prepare(
         "SELECT id,type,origin,amount_cents AS amountCents,occurred_on AS occurredOn,description,category,payment_method AS paymentMethod,status,notes,receipt_id AS receiptId FROM transactions WHERE user_id = ? ORDER BY occurred_on DESC, created_at DESC LIMIT 200",
       ).bind(owner);
   const result = await statement.all();
@@ -55,7 +56,8 @@ export async function POST(request: Request) {
       { error: "Autenticação necessária." },
       { status: 401 },
     );
-  if (!env.DB)
+  const { DB } = await getCloudflareBindings();
+  if (!DB)
     return Response.json(
       { error: "Banco temporariamente indisponível." },
       { status: 503 },
@@ -72,7 +74,7 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID();
   const now = Date.now();
   const v = parsed.data;
-  await env.DB.prepare(
+  await DB.prepare(
     "INSERT INTO transactions (id,user_id,type,origin,amount_cents,occurred_on,description,category,payment_method,status,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
   )
     .bind(

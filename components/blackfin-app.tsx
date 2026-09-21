@@ -685,7 +685,13 @@ export function BlackfinApp({
                   </span>
                 </div>
                 <div className="chart-wrap">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                  <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                    minWidth={0}
+                    minHeight={0}
+                    initialDimension={{ width: 1, height: 1 }}
+                  >
                     <AreaChart data={liveChart}>
                       <defs>
                         <linearGradient

@@ -1,5 +1,5 @@
-import { env } from "cloudflare:workers";
 import { receiptParser } from "@/services/receipt-parser";
+import { getCloudflareBindings } from "@/lib/cloudflare-bindings";
 
 const allowed = new Set(["image/jpeg", "image/png", "application/pdf"]);
 const MAX = 10 * 1024 * 1024;
@@ -10,7 +10,8 @@ export async function POST(request: Request) {
       { error: "Autenticação necessária." },
       { status: 401 },
     );
-  if (!env.DB || !env.RECEIPTS)
+  const { DB, RECEIPTS } = await getCloudflareBindings();
+  if (!DB || !RECEIPTS)
     return Response.json(
       { error: "Armazenamento temporariamente indisponível." },
       { status: 503 },
@@ -29,12 +30,12 @@ export async function POST(request: Request) {
   const id = crypto.randomUUID();
   const key = `${owner}/${id}`;
   const now = Date.now();
-  await env.RECEIPTS.put(key, bytes, {
+  await RECEIPTS.put(key, bytes, {
     httpMetadata: { contentType: file.type },
     customMetadata: { owner },
   });
   try {
-    await env.DB.prepare(
+    await DB.prepare(
       "INSERT INTO receipts (id,user_id,object_key,file_name,content_type,size,status,parsed_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
     )
       .bind(
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
       )
       .run();
   } catch (error) {
-    await env.RECEIPTS.delete(key);
+    await RECEIPTS.delete(key);
     throw error;
   }
   return Response.json(

@@ -782,7 +782,13 @@ function ReportsPage() {
             </div>
           </div>
           <div className="report-chart">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+            <ResponsiveContainer
+              width="100%"
+              height="100%"
+              minWidth={0}
+              minHeight={0}
+              initialDimension={{ width: 1, height: 1 }}
+            >
               <BarChart data={reportData}>
                 <CartesianGrid stroke="#ffffff0a" vertical={false} />
                 <XAxis
@@ -812,7 +818,13 @@ function ReportsPage() {
             </div>
           </div>
           <div className="donut-wrap">
-            <ResponsiveContainer width="100%" height={180} minWidth={0}>
+            <ResponsiveContainer
+              width="100%"
+              height={180}
+              minWidth={0}
+              minHeight={0}
+              initialDimension={{ width: 1, height: 180 }}
+            >
               <PieChart>
                 <Pie
                   data={categories}
