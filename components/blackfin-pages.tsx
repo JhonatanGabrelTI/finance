@@ -1321,11 +1321,11 @@ type Product = {
 function ProductsPage() {
   const photoInput = useRef<HTMLInputElement>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
   const [photo, setPhoto] = useState<string>();
+  const [saveError, setSaveError] = useState("");
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
@@ -1333,27 +1333,46 @@ function ProductsPage() {
         if (saved) setProducts(JSON.parse(saved) as Product[]);
       } catch {
         window.localStorage.removeItem("blackfin_products_business_v1");
-      } finally {
-        setLoaded(true);
       }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
-  useEffect(() => {
-    if (loaded) window.localStorage.setItem("blackfin_products_business_v1", JSON.stringify(products));
-  }, [products, loaded]);
   const selectPhoto = (file?: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
     const reader = new FileReader();
-    reader.onload = () => setPhoto(typeof reader.result === "string" ? reader.result : undefined);
+    reader.onload = async () => {
+      try {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1, 800 / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+        const context = canvas.getContext("2d");
+        if (!context) throw new Error("Canvas indisponível");
+        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        bitmap.close();
+        setPhoto(canvas.toDataURL("image/jpeg", 0.72));
+      } catch {
+        setPhoto(typeof reader.result === "string" ? reader.result : undefined);
+      }
+    };
     reader.readAsDataURL(file);
   };
   const save = () => {
     const value = Number(price.replace(/\./g, "").replace(",", "."));
-    if (!name.trim() || !Number.isFinite(value) || value <= 0) return;
-    setProducts((items) => [{ id: crypto.randomUUID(), name: name.trim(), price: value, photo }, ...items]);
-    setName(""); setPrice(""); setPhoto(undefined); setOpen(false);
+    if (!name.trim() || !Number.isFinite(value) || value <= 0) {
+      setSaveError("Informe o nome e um valor válido para o produto.");
+      return;
+    }
+    const nextProducts = [{ id: crypto.randomUUID(), name: name.trim(), price: value, photo }, ...products];
+    try {
+      window.localStorage.setItem("blackfin_products_business_v1", JSON.stringify(nextProducts));
+      setProducts(nextProducts);
+      setName(""); setPrice(""); setPhoto(undefined); setSaveError(""); setOpen(false);
+    } catch {
+      setSaveError("Não foi possível salvar. Remova a foto ou escolha uma imagem menor e tente novamente.");
+    }
   };
   return <>
     <PageHeader eyebrow="CATÁLOGO EMPRESARIAL" title="Produtos" description="Cadastre produtos da empresa com foto e preço. Este catálogo não aparece no ambiente pessoal." action={<Button className="gold-button" onClick={() => setOpen(true)}><PackagePlus /> Novo produto</Button>} />
@@ -1364,11 +1383,12 @@ function ProductsPage() {
       </article>)}
       {products.length === 0 && <div className="empty-products"><PackagePlus /><strong>Nenhum produto cadastrado</strong><p>Adicione fotos e preços para organizar o catálogo da empresa.</p><Button className="gold-button" onClick={() => setOpen(true)}>Cadastrar produto</Button></div>}
     </div>
-    <Dialog open={open} onOpenChange={setOpen}><DialogContent className="transaction-dialog"><DialogHeader><DialogTitle>Novo produto</DialogTitle><DialogDescription>Inclua a foto e o valor de venda do produto.</DialogDescription></DialogHeader><div className="review-form">
+    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) setSaveError(""); }}><DialogContent className="transaction-dialog"><DialogHeader><DialogTitle>Novo produto</DialogTitle><DialogDescription>Inclua a foto e o valor de venda do produto.</DialogDescription></DialogHeader><div className="review-form">
       <input ref={photoInput} hidden type="file" accept="image/*" onChange={(event) => selectPhoto(event.target.files?.[0])} />
       <button type="button" className="product-upload" onClick={() => photoInput.current?.click()}>{photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={photo} alt="Prévia do produto" /> : <><Upload /> Adicionar foto</>}</button>
       <label className="wide">Nome do produto<Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Pomada modeladora" /></label>
       <label className="wide">Valor de venda<Input value={price} onChange={(event) => setPrice(event.target.value)} inputMode="decimal" placeholder="R$ 0,00" /></label>
+      {saveError && <p className="form-error wide">{saveError}</p>}
       <Button className="gold-button wide" onClick={save}>Salvar produto</Button>
     </div></DialogContent></Dialog>
   </>;
