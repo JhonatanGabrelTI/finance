@@ -34,6 +34,7 @@ export type BusinessProfile = {
 const LEGACY_PROFILE_KEY = "blackfin_business_profile_v1";
 const profileKey = (workspace: Workspace) => `blackfin_${workspace}_profile_v2`;
 const CLEAN_START_KEY = "blackfin_clean_start_2026_09_21";
+const BUSINESS_TEST_DATA_CLEANUP_KEY = "blackfin_business_test_data_cleaned_2026_09_30_v1";
 const testDataKeys = [
   LEGACY_PROFILE_KEY,
   "blackfin_business_profile_v2",
@@ -51,6 +52,23 @@ function clearTestDataOnce() {
   if (window.localStorage.getItem(CLEAN_START_KEY)) return;
   testDataKeys.forEach((key) => window.localStorage.removeItem(key));
   window.localStorage.setItem(CLEAN_START_KEY, "done");
+}
+
+async function clearBusinessTestDataOnce() {
+  if (window.localStorage.getItem(BUSINESS_TEST_DATA_CLEANUP_KEY)) return;
+  try {
+    const response = await fetch("/api/data", { method: "DELETE" });
+    if (!response.ok) return;
+    [
+      "blackfin_transactions_business_v2",
+      "blackfin_transactions_v1",
+      "blackfin_products_business_v1",
+      "blackfin_barbers_v1",
+    ].forEach((key) => window.localStorage.removeItem(key));
+    window.localStorage.setItem(BUSINESS_TEST_DATA_CLEANUP_KEY, "done");
+  } catch {
+    // Tente novamente no próximo carregamento se o armazenamento estiver indisponível.
+  }
 }
 
 function formatPhone(value: string) {
@@ -123,11 +141,12 @@ export function AuthFlow({
       .then(async (response) =>
         (await response.json()) as { authenticated?: boolean; workspace?: Workspace | null },
       )
-      .then((result) => {
+      .then(async (result) => {
         if (!result.authenticated || !result.workspace) {
           setStage("login");
           return;
         }
+        if (result.workspace === "business") await clearBusinessTestDataOnce();
         setWorkspace(result.workspace);
         const savedProfile = readProfile(result.workspace);
         setProfile(savedProfile);
@@ -152,6 +171,7 @@ export function AuthFlow({
         return;
       }
       const activeWorkspace = result.workspace ?? workspace;
+      if (activeWorkspace === "business") await clearBusinessTestDataOnce();
       setWorkspace(activeWorkspace);
       const savedProfile = readProfile(activeWorkspace);
       setProfile(savedProfile);

@@ -2326,6 +2326,7 @@ button {
 .product-photo svg { width: 34px; height: 34px; }
 .product-photo img { width: 100%; height: 100%; object-fit: cover; }
 .product-card > div:last-child { padding: 16px; }
+.product-card-details { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .product-card small { color: #777; font-size: 10px; letter-spacing: .12em; }
 .product-card h3 { margin: 6px 0 10px; color: #eee; font-size: 16px; }
 .product-card strong { color: #72d6ad; font-size: 17px; }
@@ -2334,6 +2335,17 @@ button {
 .empty-products p { margin: 0 0 8px; color: #777; }
 .product-upload { min-height: 150px; border: 1px dashed #4a4a4a; border-radius: 10px; background: #121212; color: #c5a467; display: grid; place-items: center; gap: 8px; overflow: hidden; }
 .product-upload img { width: 100%; height: 150px; object-fit: cover; }
+.commission-list { grid-column: 1 / -1; display: grid; gap: 8px; border-top: 1px solid #202020; padding-top: 12px; }
+.commission-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #aaa; font-size: 11px; }
+.commission-row button { flex: 0 0 auto; }
+.commission-empty { grid-column: 1 / -1; color: #777; font-size: 11px; }
+.team-card .commission-row button { grid-column: auto; }
+.delete-barber { border-color: #492b29; color: #d87974; }
+.delete-barber:hover { border-color: #7a3935; color: #ff9a94; background: #321b1a; }
+.settings-data-reset { display: grid; gap: 12px; margin-top: 20px; padding: 16px; border: 1px solid #492b29; border-radius: 12px; background: #1a1111; }
+.settings-data-reset > div:first-child strong { color: #f0e8e7; font-size: 13px; }
+.settings-data-reset p { margin: 6px 0 0; color: #9b8988; font-size: 11px; line-height: 1.6; }
+.settings-data-reset .form-error { color: #ff9a94; }
 .access-restricted { min-height: 360px; border: 1px solid #3b3428; border-radius: 16px; background: #111; display: grid; justify-items: center; align-content: center; text-align: center; padding: 32px; color: #a6a6a1; }
 .access-restricted > svg { width: 38px; height: 38px; color: #c5a467; margin-bottom: 14px; }
 .access-restricted > p { margin: 0; color: #c5a467; font-size: 10px; letter-spacing: .16em; }

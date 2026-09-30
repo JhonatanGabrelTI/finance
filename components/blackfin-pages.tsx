@@ -422,6 +422,11 @@ function ReceiptsPage({ onNew, workspace }: { onNew: () => void; workspace: Work
           <Button variant="outline" onClick={() => input.current?.click()}>
             {file ? "Trocar arquivo" : "Selecionar arquivo"}
           </Button>
+          {file && <Button type="button" variant="ghost" className="delete-transaction" onClick={() => {
+            if (!window.confirm(`Remover o arquivo “${file.name}” selecionado?`)) return;
+            setFile(null);
+            setConfirmed(false);
+          }}><Trash2 /> Remover arquivo</Button>}
         </div>
         <div className="data-card padded receipt-review">
           <div className="section-title">
@@ -930,8 +935,11 @@ function HistoryPage({ transactions, onDelete }: { transactions: FinancialTransa
   );
 }
 
+type BarberService = { id: string; amount: number; commission: number; date: string };
+type BarberRecord = { initial: string; name: string; pct: number; sales: number; services?: BarberService[] };
+
 function PeoplePage({ commissions = false }: { commissions?: boolean }) {
-  const [barbers, setBarbers] = useState<Array<{ initial: string; name: string; pct: number; sales: number }>>([]);
+  const [barbers, setBarbers] = useState<BarberRecord[]>([]);
   const [barbersLoaded, setBarbersLoaded] = useState(false);
   const [barberOpen, setBarberOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
@@ -940,8 +948,10 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
   const [selectedBarber, setSelectedBarber] = useState("");
   const [serviceValue, setServiceValue] = useState("");
   const [commissionValue, setCommissionValue] = useState("");
+  const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [formError, setFormError] = useState("");
   useEffect(() => {
-    let stored: typeof barbers = [];
+    let stored: BarberRecord[] = [];
     try {
       const saved = window.localStorage.getItem("blackfin_barbers_v1");
       if (saved) {
@@ -967,13 +977,25 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
     ? (Number(serviceValue.replace(",", ".")) * current.pct) / 100
     : 0;
   const totalSales = barbers.reduce((sum, barber) => sum + barber.sales, 0);
+  const barberCommission = (barber: BarberRecord) => {
+    const services = barber.services ?? [];
+    const legacySales = Math.max(0, barber.sales - services.reduce((sum, service) => sum + service.amount, 0));
+    return legacySales * barber.pct / 100 + services.reduce((sum, service) => sum + service.commission, 0);
+  };
   const totalCommissions = barbers.reduce(
-    (sum, barber) => sum + (barber.sales * barber.pct) / 100,
+    (sum, barber) => sum + barberCommission(barber),
     0,
   );
   const addBarber = () => {
     const pct = Math.min(100, Math.max(0, Number(percent)));
-    if (!name.trim() || !Number.isFinite(pct)) return;
+    if (!name.trim() || !Number.isFinite(pct)) {
+      setFormError("Informe o nome e um percentual válido.");
+      return;
+    }
+    if (barbers.some((item) => item.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase())) {
+      setFormError("Já existe um barbeiro com esse nome.");
+      return;
+    }
     const parts = name.trim().split(/\s+/);
     setBarbers((items) => [
       ...items,
@@ -982,25 +1004,55 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
         name: name.trim(),
         pct,
         sales: 0,
+        services: [],
       },
     ]);
     setSelectedBarber(name.trim());
     setName("");
+    setFormError("");
     setBarberOpen(false);
   };
   const addService = () => {
     const value = Number(serviceValue.replace(",", "."));
-    if (!value || !current) return;
+    const commission = Number((commissionValue || String(calculated)).replace(",", "."));
+    if (!Number.isFinite(value) || value <= 0 || !current || !serviceDate) {
+      setFormError("Informe um valor de serviço e uma data válidos.");
+      return;
+    }
+    if (!Number.isFinite(commission) || commission < 0 || commission > value) {
+      setFormError("A comissão deve estar entre R$ 0,00 e o valor do serviço.");
+      return;
+    }
     setBarbers((items) =>
       items.map((item) =>
         item.name === selectedBarber
-          ? { ...item, sales: item.sales + value }
+          ? {
+              ...item,
+              sales: Math.round((item.sales + value) * 100) / 100,
+              services: [...(item.services ?? []), { id: crypto.randomUUID(), amount: value, commission, date: serviceDate }],
+            }
           : item,
       ),
     );
     setServiceValue("");
     setCommissionValue("");
+    setServiceDate(new Date().toISOString().slice(0, 10));
+    setFormError("");
     setServiceOpen(false);
+  };
+  const deleteBarber = (barber: BarberRecord) => {
+    if (!window.confirm(`Excluir ${barber.name} e os serviços/comissões cadastrados para este barbeiro?`)) return;
+    const remaining = barbers.filter((item) => item.name !== barber.name);
+    setBarbers(remaining);
+    if (selectedBarber === barber.name) setSelectedBarber(remaining[0]?.name ?? "");
+  };
+  const deleteService = (barber: BarberRecord, service: BarberService) => {
+    if (!window.confirm(`Excluir o serviço de ${money(service.amount)} de ${barber.name}?`)) return;
+    setBarbers((items) => items.map((item) => item.name !== barber.name ? item : {
+      ...item,
+      sales: Math.max(0, Math.round((item.sales - service.amount) * 100) / 100),
+      services: (item.services ?? []).filter((entry) => entry.id !== service.id),
+    }));
   };
   return (
     <>
@@ -1050,7 +1102,7 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
         />
       </div>
       <div className="team-grid">
-        {barbers.map(({ initial, name, pct, sales }) => (
+        {barbers.map(({ initial, name, pct, sales, services }) => (
           <article className="team-card" key={name}>
             <div className="team-avatar">{initial}</div>
             <div>
@@ -1065,11 +1117,20 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
               </div>
               <div>
                 <dt>COMISSÃO</dt>
-                <dd>{money((sales * pct) / 100)}</dd>
+                <dd>{money(barberCommission({ initial, name, pct, sales, services }))}</dd>
               </div>
             </dl>
-            <Button variant="outline" size="sm">
-              Ver detalhes
+            {commissions && (services?.length ? <div className="commission-list">
+              {services.map((service) => (
+                <div className="commission-row" key={service.id}>
+                  <span>{new Date(`${service.date}T00:00:00`).toLocaleDateString("pt-BR")}</span>
+                  <span>Serviço {money(service.amount)} · Comissão {money(service.commission)}</span>
+                  <Button type="button" variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir serviço de ${name}`} title="Excluir serviço" onClick={() => deleteService({ initial, name, pct, sales, services }, service)}><Trash2 /></Button>
+                </div>
+              ))}
+            </div> : commissions && <p className="commission-empty">Nenhum serviço lançado para este barbeiro.</p>)}
+            <Button type="button" variant="outline" size="sm" className="delete-barber" onClick={() => deleteBarber({ initial, name, pct, sales, services })}>
+                <Trash2 /> Excluir barbeiro
             </Button>
           </article>
         ))}
@@ -1120,6 +1181,7 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
               <UserPlus />
               Adicionar barbeiro
             </Button>
+            {formError && <p className="form-error wide">{formError}</p>}
           </div>
         </DialogContent>
       </Dialog>
@@ -1174,7 +1236,7 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
             </label>
             <label>
               Data
-              <Input type="date" defaultValue="2026-09-20" />
+              <Input type="date" value={serviceDate} onChange={(event) => setServiceDate(event.target.value)} />
             </label>
             <label>
               Percentual aplicado
@@ -1184,6 +1246,7 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
               <Check />
               Registrar comissão
             </Button>
+            {formError && <p className="form-error wide">{formError}</p>}
           </div>
         </DialogContent>
       </Dialog>
@@ -1241,6 +1304,9 @@ function SettingsPage({
   const [section, setSection] = useState("perfil");
   const [financialAlerts, setFinancialAlerts] = useState(true);
   const [weeklySummary, setWeeklySummary] = useState(true);
+  const [resettingData, setResettingData] = useState(false);
+  const [resetMessage, setResetMessage] = useState("");
+  const [resetError, setResetError] = useState("");
   const sections = workspace === "business"
     ? [["perfil", "Perfil"], ["empresa", "Empresa"], ["categorias", "Categorias"], ["notificacoes", "Notificações"], ["seguranca", "Segurança"]]
     : [["perfil", "Perfil"], ["categorias", "Categorias"], ["notificacoes", "Notificações"], ["seguranca", "Segurança"]];
@@ -1252,6 +1318,29 @@ function SettingsPage({
     onProfileChange(form);
     window.localStorage.setItem(`blackfin_notification_preferences_${workspace}_v1`, JSON.stringify({ financialAlerts, weeklySummary }));
     setSaved(true);
+  };
+  const clearTestData = async () => {
+    const workspaceName = workspace === "business" ? "empresarial" : "pessoal";
+    if (!window.confirm(`Apagar permanentemente todos os lançamentos e comprovantes do ambiente ${workspaceName}${workspace === "business" ? ", além dos produtos e barbeiros salvos neste navegador" : ""}? Esta ação não pode ser desfeita.`)) return;
+    setResettingData(true);
+    setResetError("");
+    setResetMessage("");
+    try {
+      const response = await fetch("/api/data", { method: "DELETE" });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "Não foi possível limpar os dados.");
+      window.localStorage.removeItem(`blackfin_transactions_${workspace}_v2`);
+      if (workspace === "business") {
+        window.localStorage.removeItem("blackfin_transactions_v1");
+        window.localStorage.removeItem("blackfin_products_business_v1");
+        window.localStorage.removeItem("blackfin_barbers_v1");
+      }
+      setResetMessage("Dados de teste removidos. Atualizando o ambiente...");
+      window.setTimeout(() => window.location.reload(), 700);
+    } catch (error) {
+      setResetError(error instanceof Error ? error.message : "Não foi possível limpar os dados.");
+      setResettingData(false);
+    }
   };
   const titles: Record<string, [string, string, string]> = {
     perfil: ["PERFIL", "Informações pessoais", "Dados usados para identificar este ambiente."],
@@ -1303,7 +1392,15 @@ function SettingsPage({
             <div className="settings-switch"><div><strong>Notificações financeiras</strong><p>Receba alertas de vencimentos e mudanças relevantes.</p></div><Switch checked={financialAlerts} onCheckedChange={(value) => { setFinancialAlerts(value); setSaved(false); }} /></div>
             <div className="settings-switch"><div><strong>Resumo semanal</strong><p>Uma visão consolidada toda segunda-feira.</p></div><Switch checked={weeklySummary} onCheckedChange={(value) => { setWeeklySummary(value); setSaved(false); }} /></div>
           </>}
-          {section === "seguranca" && <div className="settings-security-note"><ShieldCheck /><div><strong>Ambiente {workspace === "business" ? "empresarial" : "pessoal"} ativo</strong><p>Para alterar login ou senha publicada, atualize as variáveis de ambiente na Vercel e faça um novo deploy.</p></div></div>}
+          {section === "seguranca" && <>
+            <div className="settings-security-note"><ShieldCheck /><div><strong>Ambiente {workspace === "business" ? "empresarial" : "pessoal"} ativo</strong><p>Para alterar login ou senha publicada, atualize as variáveis de ambiente na Vercel e faça um novo deploy.</p></div></div>
+            <div className="settings-data-reset">
+              <div><strong>Limpar dados de teste</strong><p>Apaga lançamentos e comprovantes deste ambiente. No ambiente empresarial, também apaga produtos e barbeiros salvos neste navegador.</p></div>
+              <Button type="button" variant="outline" className="delete-barber" disabled={resettingData} onClick={() => void clearTestData()}><Trash2 />{resettingData ? "Limpando..." : "Apagar dados deste ambiente"}</Button>
+              {resetError && <p className="form-error">{resetError}</p>}
+              {resetMessage && <p role="status">{resetMessage}</p>}
+            </div>
+          </>}
           {section !== "seguranca" && <Button className="gold-button" onClick={save}>{saved ? <><Check /> Alterações salvas</> : "Salvar alterações"}</Button>}
         </div>
       </div>
@@ -1374,12 +1471,24 @@ function ProductsPage() {
       setSaveError("Não foi possível salvar. Remova a foto ou escolha uma imagem menor e tente novamente.");
     }
   };
+  const deleteProduct = (product: Product) => {
+    if (!window.confirm(`Excluir o produto “${product.name}”?`)) return;
+    const nextProducts = products.filter((item) => item.id !== product.id);
+    try {
+      window.localStorage.setItem("blackfin_products_business_v1", JSON.stringify(nextProducts));
+      setProducts(nextProducts);
+      setSaveError("");
+    } catch {
+      setSaveError("Não foi possível excluir o produto. Tente novamente.");
+    }
+  };
   return <>
     <PageHeader eyebrow="CATÁLOGO EMPRESARIAL" title="Produtos" description="Cadastre produtos da empresa com foto e preço. Este catálogo não aparece no ambiente pessoal." action={<Button className="gold-button" onClick={() => setOpen(true)}><PackagePlus /> Novo produto</Button>} />
+    {saveError && !open && <p className="form-error">{saveError}</p>}
     <div className="product-grid">
       {products.map((product) => <article className="product-card" key={product.id}>
         <div className="product-photo">{product.photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={product.photo} alt={product.name} /> : <PackagePlus />}</div>
-        <div><small>PRODUTO</small><h3>{product.name}</h3><strong>{money(product.price)}</strong></div>
+        <div className="product-card-details"><div><small>PRODUTO</small><h3>{product.name}</h3><strong>{money(product.price)}</strong></div><Button type="button" variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir ${product.name}`} title="Excluir produto" onClick={() => deleteProduct(product)}><Trash2 /></Button></div>
       </article>)}
       {products.length === 0 && <div className="empty-products"><PackagePlus /><strong>Nenhum produto cadastrado</strong><p>Adicione fotos e preços para organizar o catálogo da empresa.</p><Button className="gold-button" onClick={() => setOpen(true)}>Cadastrar produto</Button></div>}
     </div>
