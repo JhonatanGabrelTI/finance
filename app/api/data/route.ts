@@ -44,11 +44,37 @@ export async function DELETE(request: Request) {
     )
       .bind(session.owner, origin)
       .run();
+    const accounts = await DB.prepare(
+      "DELETE FROM accounts WHERE user_id = ? AND origin = ?",
+    )
+      .bind(session.owner, origin)
+      .run();
+    const categories = await DB.prepare(
+      "DELETE FROM categories WHERE user_id = ? AND origin = ?",
+    )
+      .bind(session.owner, origin)
+      .run();
+    let commissions = 0;
+    let barbers = 0;
+    if (session.workspace === "business") {
+      commissions = (await DB.prepare("DELETE FROM commissions WHERE user_id = ?").bind(session.owner).run()).meta.changes;
+      barbers = (await DB.prepare("DELETE FROM barbers WHERE user_id = ?").bind(session.owner).run()).meta.changes;
+    }
+    const notifications = await DB.prepare(
+      "DELETE FROM notifications WHERE user_id = ?",
+    )
+      .bind(session.owner)
+      .run();
 
     return Response.json({
       deleted: true,
       receipts: receipts.meta.changes,
       transactions: transactions.meta.changes,
+      accounts: accounts.meta.changes,
+      categories: categories.meta.changes,
+      commissions,
+      barbers,
+      notifications: notifications.meta.changes,
       workspace: session.workspace,
     });
   } catch {

@@ -97,21 +97,15 @@ const personalNav = [
   ["Histórico", FileText, "/historico"],
   ["Insights", Lightbulb, "/insights"],
 ] as const;
-const chartData = [
-  { day: "14", receita: 0, despesa: 0 },
-  { day: "15", receita: 0, despesa: 0 },
-  { day: "16", receita: 0, despesa: 0 },
-  { day: "17", receita: 0, despesa: 0 },
-  { day: "18", receita: 0, despesa: 0 },
-  { day: "19", receita: 0, despesa: 0 },
-  { day: "20", receita: 0, despesa: 0 },
-];
+const localDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 const transactions: Array<{
   icon: typeof ArrowUpRight;
   title: string;
   meta: string;
   value: string;
   positive: boolean;
+  status: string;
 }> = [];
 
 function initials(name: string) {
@@ -243,26 +237,26 @@ function TransactionDialog({
   onOpenChange,
   onSaved,
   workspace,
+  initialType = "receita",
 }: {
   open: boolean;
   onOpenChange: (value: boolean) => void;
-  onSaved: (transaction: {
-    type: "receita" | "despesa";
-    origin: "pessoal" | "barbearia";
-    amount: number;
-    description: string;
-    date: string;
-    category: string;
-  }) => void;
+  onSaved: (transaction: Omit<FinancialTransaction, "id">) => void;
   workspace: Workspace;
+  initialType?: "receita" | "despesa";
 }) {
-  const [type, setType] = useState<"receita" | "despesa">("receita");
+  const [type, setType] = useState<"receita" | "despesa">(initialType);
   const origin = workspace === "business" ? "barbearia" : "pessoal";
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [date, setDate] = useState("2026-09-20");
-  const [category, setCategory] = useState("Serviços");
+  const [date, setDate] = useState(() => localDateKey(new Date()));
+  const [category, setCategory] = useState(workspace === "personal" ? "Alimentação" : "Serviços");
+  const [status, setStatus] = useState<"pago" | "pendente">("pago");
+  const [paymentMethod, setPaymentMethod] = useState("pix");
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (open) setType(initialType);
+  }, [initialType, open]);
   const personalCategories = [
     "Alimentação",
     "Gasolina",
@@ -295,7 +289,7 @@ function TransactionDialog({
   const categories = workspace === "personal" ? personalCategories : businessCategories;
   const save = () => {
     const numeric = Number(amount.replace(/\./g, "").replace(",", "."));
-    if (!numeric || !description.trim() || !date) {
+    if (!Number.isFinite(numeric) || numeric <= 0 || !description.trim() || !date) {
       setError("Preencha valor, descrição e data para continuar.");
       return;
     }
@@ -306,9 +300,13 @@ function TransactionDialog({
       description: description.trim(),
       date,
       category,
+      status,
+      paymentMethod,
     });
     setAmount("");
     setDescription("");
+    setStatus("pago");
+    setPaymentMethod("pix");
     setError("");
     onOpenChange(false);
   };
@@ -382,6 +380,31 @@ function TransactionDialog({
               onChange={(event) => setDate(event.target.value)}
             />
           </label>
+          <label>
+            Situação
+            <Select value={status} onValueChange={(value) => setStatus(value as "pago" | "pendente")}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pago">Pago / recebido</SelectItem>
+                <SelectItem value="pendente">A pagar / receber</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+          <label>
+            Forma de pagamento
+            <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pix">Pix</SelectItem>
+                <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                <SelectItem value="credito">Cartão de crédito</SelectItem>
+                <SelectItem value="debito">Cartão de débito</SelectItem>
+                <SelectItem value="transferencia">Transferência</SelectItem>
+                <SelectItem value="boleto">Boleto</SelectItem>
+                <SelectItem value="outro">Outro</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
         </div>
         {error && <p className="form-error">{error}</p>}
         <div className="dialog-actions">
@@ -417,6 +440,7 @@ function BlackfinWorkspace({
       : initialPath,
   );
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [newTransactionType, setNewTransactionType] = useState<"receita" | "despesa">("receita");
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [transactionsLoaded, setTransactionsLoaded] = useState(false);
   const [addedTransactions, setAddedTransactions] = useState<FinancialTransaction[]>([]);
@@ -442,34 +466,46 @@ function BlackfinWorkspace({
       JSON.stringify(addedTransactions),
     );
   }, [addedTransactions, transactionsLoaded, workspace]);
+  const now = new Date();
+  const currentMonth = localDateKey(now).slice(0, 7);
   const liveChart = useMemo(() => {
-    const next = chartData.map((item) => ({ ...item }));
+    const monthly = period === "6m";
+    const count = period === "7d" ? 7 : period === "30d" ? 30 : 6;
+    const dates = Array.from({ length: count }, (_, index) => {
+      const date = monthly
+        ? new Date(now.getFullYear(), now.getMonth(), 1)
+        : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (monthly) date.setMonth(date.getMonth() - (count - index - 1));
+      else date.setDate(date.getDate() - (count - index - 1));
+      const key = monthly ? localDateKey(date).slice(0, 7) : localDateKey(date);
+      return { key, day: monthly ? date.toLocaleDateString("pt-BR", { month: "short" }) : String(date.getDate()), receita: 0, despesa: 0 };
+    });
     for (const transaction of addedTransactions) {
-      const target = next[next.length - 1];
-      if (transaction.type === "receita") target.receita += transaction.amount;
-      else target.despesa += transaction.amount;
+      if (transaction.status === "pendente") continue;
+      const bucket = dates.find((item) => transaction.date.startsWith(item.key));
+      if (!bucket) continue;
+      if (transaction.type === "receita") bucket.receita += transaction.amount;
+      else bucket.despesa += transaction.amount;
     }
-    return next;
-  }, [addedTransactions]);
-  const total = useMemo(
-    () => liveChart.reduce((acc, item) => acc + item.receita - item.despesa, 0),
-    [liveChart],
-  );
-  const consolidated = addedTransactions.reduce(
+    return dates;
+  }, [addedTransactions, period, now]);
+  const paidTransactions = addedTransactions.filter((item) => item.status !== "pendente");
+  const monthTransactions = paidTransactions.filter((item) => item.date.startsWith(currentMonth));
+  const consolidated = paidTransactions.reduce(
       (sum, item) =>
         sum + (item.type === "receita" ? item.amount : -item.amount),
       0,
     );
-  const revenueTotal = addedTransactions
+  const revenueTotal = monthTransactions
     .filter((item) => item.type === "receita")
     .reduce((sum, item) => sum + item.amount, 0);
-  const expenseTotal = addedTransactions
+  const expenseTotal = monthTransactions
     .filter((item) => item.type === "despesa")
     .reduce((sum, item) => sum + item.amount, 0);
-  const personalBalance = addedTransactions
+  const personalBalance = paidTransactions
     .filter((item) => item.origin === "pessoal")
     .reduce((sum, item) => sum + (item.type === "receita" ? item.amount : -item.amount), 0);
-  const businessBalance = addedTransactions
+  const businessBalance = paidTransactions
     .filter((item) => item.origin === "barbearia")
     .reduce((sum, item) => sum + (item.type === "receita" ? item.amount : -item.amount), 0);
   const formatMoney = (value: number) =>
@@ -484,8 +520,8 @@ function BlackfinWorkspace({
         ...item,
         amountCents: Math.round(item.amount * 100),
         occurredOn: item.date,
-        paymentMethod: "pix",
-        status: "pago",
+        paymentMethod: item.paymentMethod ?? "pix",
+        status: item.status ?? "pago",
       }),
     }).catch(() => {});
   };
@@ -556,6 +592,10 @@ function BlackfinWorkspace({
     setCurrentPath(path);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  const openNewTransaction = (type: "receita" | "despesa" = "receita") => {
+    setNewTransactionType(type);
+    setDialogOpen(true);
+  };
   return (
     <div className="app-shell">
       <Sidebar currentPath={currentPath} onNavigate={navigate} profile={profile} workspace={workspace} />
@@ -604,7 +644,7 @@ function BlackfinWorkspace({
         {currentPath !== "/dashboard" ? (
           <FeaturePage
             path={currentPath}
-            onNewTransaction={() => setDialogOpen(true)}
+            onNewTransaction={openNewTransaction}
             profile={profile}
             onProfileChange={onProfileChange}
             workspace={workspace}
@@ -615,7 +655,7 @@ function BlackfinWorkspace({
           <div className="dashboard-wrap">
             <section className="page-heading">
               <div>
-                <p>DOMINGO, 20 DE SETEMBRO</p>
+                <p>{new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" }).toUpperCase()}</p>
                 <h1>Olá, {profile.ownerName.split(" ")[0]}.</h1>
                 <span>
                   {workspace === "business" ? "Acompanhe o desempenho da sua empresa." : "Acompanhe sua vida financeira com privacidade."}
@@ -651,7 +691,7 @@ function BlackfinWorkspace({
                 </div>
                 <div>
                   <small>RESULTADO DO MÊS</small>
-                  <strong>{formatMoney(total)}</strong>
+                  <strong>{formatMoney(revenueTotal - expenseTotal)}</strong>
                 </div>
               </div>
               <div className="hero-watermark">BF</div>
@@ -839,6 +879,7 @@ function BlackfinWorkspace({
                       meta: `${item.origin === "pessoal" ? "Pessoal" : "Empresa"} · ${item.category}`,
                       value: `${item.type === "receita" ? "+" : "−"} ${item.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
                       positive: item.type === "receita",
+                      status: item.status === "pendente" ? "Pendente" : "Pago",
                     })),
                     ...transactions.map((item) => ({ ...item, id: item.title })),
                   ]
@@ -859,9 +900,9 @@ function BlackfinWorkspace({
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className="status-pill">
+                            <span className={`status-pill ${tx.status === "Pendente" ? "pending" : ""}`}>
                             <i />
-                            Pago
+                              {tx.status}
                           </span>
                         </TableCell>
                         <TableCell
@@ -885,6 +926,7 @@ function BlackfinWorkspace({
         onOpenChange={setDialogOpen}
         onSaved={saveTransaction}
         workspace={workspace}
+        initialType={newTransactionType}
       />
       <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
         <DialogContent className="transaction-dialog notifications-dialog">

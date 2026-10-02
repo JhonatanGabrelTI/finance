@@ -2254,6 +2254,14 @@ button {
   background: #79c8a6;
   margin: 0 4px 1px 0;
 }
+.status-pill.pending {
+  color: #d2ad68;
+  background: #251f14;
+  border-color: #46391e;
+}
+.status-pill.pending i {
+  background: currentColor;
+}
 .value-positive {
   color: #75caa7 !important;
 }

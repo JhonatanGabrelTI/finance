@@ -72,7 +72,7 @@ import type { Workspace } from "@/lib/auth-session";
 
 type PageProps = {
   path: string;
-  onNewTransaction: () => void;
+  onNewTransaction: (type?: "receita" | "despesa") => void;
   profile: BusinessProfile;
   onProfileChange: (profile: BusinessProfile) => void;
   workspace: Workspace;
@@ -86,6 +86,8 @@ export type FinancialTransaction = {
   description: string;
   date: string;
   category: string;
+  status?: "pago" | "pendente";
+  paymentMethod?: string;
 };
 type Tx = {
   id: string;
@@ -105,7 +107,7 @@ function toTableRows(transactions: FinancialTransaction[]): Tx[] {
     category: transaction.category,
     origin: transaction.origin === "barbearia" ? "Empresa" : "Pessoal",
     type: transaction.type === "receita" ? "Receita" : "Despesa",
-    status: "Pago",
+    status: transaction.status === "pendente" ? "Pendente" : "Pago",
     value: transaction.amount,
   }));
 }
@@ -521,8 +523,12 @@ function ReceiptsPage({ onNew, workspace }: { onNew: () => void; workspace: Work
   );
 }
 
-function AccountsPage({ receivable = false, onNew }: { receivable?: boolean; onNew: () => void }) {
-  const rows: Array<{ n: string; v: number; d: string; s: string }> = [];
+function AccountsPage({ receivable = false, onNew, transactions, onDelete }: { receivable?: boolean; onNew: (type: "receita" | "despesa") => void; transactions: FinancialTransaction[]; onDelete: (id: string) => void }) {
+  const accountTransactions = transactions.filter((item) => item.type === (receivable ? "receita" : "despesa"));
+  const pendingTotal = accountTransactions.filter((item) => item.status === "pendente").reduce((total, item) => total + item.amount, 0);
+  const paidTotal = accountTransactions.filter((item) => item.status !== "pendente").reduce((total, item) => total + item.amount, 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const dueToday = accountTransactions.filter((item) => item.status === "pendente" && item.date === today).reduce((total, item) => total + item.amount, 0);
   return (
     <>
       <PageHeader
@@ -534,7 +540,7 @@ function AccountsPage({ receivable = false, onNew }: { receivable?: boolean; onN
             : "Visualize vencimentos e mantenha os pagamentos em dia."
         }
         action={
-          <Button className="gold-button" onClick={onNew}>
+          <Button className="gold-button" onClick={() => onNew(receivable ? "receita" : "despesa")}>
             <Plus />
             Nova conta
           </Button>
@@ -543,21 +549,21 @@ function AccountsPage({ receivable = false, onNew }: { receivable?: boolean; onN
       <div className="feature-stats">
         <Stat
           label={receivable ? "Total a receber" : "Total em aberto"}
-          value="R$ 0,00"
-          detail="Próximos 30 dias"
+          value={money(pendingTotal)}
+          detail={receivable ? "A receber" : "A pagar"}
           icon={CircleDollarSign}
         />
         <Stat
-          label={receivable ? "Recebidos" : "Vencidas"}
-          value="R$ 0,00"
-          detail="Nenhum registro"
+          label={receivable ? "Recebido" : "Pago"}
+          value={money(paidTotal)}
+          detail={`${accountTransactions.length} ${accountTransactions.length === 1 ? "lançamento" : "lançamentos"}`}
           tone={receivable ? "green" : "red"}
           icon={receivable ? ArrowUpRight : AlertTriangle}
         />
         <Stat
           label="Vencendo hoje"
-          value="R$ 0,00"
-          detail="Nenhum compromisso"
+          value={money(dueToday)}
+          detail="Vencimentos de hoje"
           tone="gold"
           icon={Clock3}
         />
@@ -569,25 +575,7 @@ function AccountsPage({ receivable = false, onNew }: { receivable?: boolean; onN
             <h2>Próximos compromissos</h2>
           </div>
         </div>
-        {rows.map((row) => (
-          <div className="account-row" key={row.n}>
-            <span
-              className={`account-icon ${row.s === "Vencida" ? "late" : ""}`}
-            >
-              <Calendar />
-            </span>
-            <div>
-              <strong>{row.n}</strong>
-              <small>Vencimento: {row.d}</small>
-            </div>
-            <b>{money(row.v)}</b>
-            <em className={row.s === "Vencida" ? "late" : ""}>{row.s}</em>
-            <Button variant="outline" size="sm">
-              {receivable ? "Marcar recebido" : "Marcar pago"}
-            </Button>
-          </div>
-        ))}
-        {rows.length === 0 && <div className="empty-list">Nenhuma conta cadastrada.</div>}
+        {accountTransactions.length > 0 ? <TransactionTable rows={toTableRows(accountTransactions)} onDelete={onDelete} /> : <div className="empty-list">Nenhuma conta cadastrada. Use “Nova conta” para registrar um valor como pago ou pendente.</div>}
       </div>
     </>
   );
@@ -864,7 +852,6 @@ function ReportsPage({ profile, workspace, transactions }: { profile: BusinessPr
 }
 
 function HistoryPage({ transactions, onDelete }: { transactions: FinancialTransaction[]; onDelete: (id: string) => void }) {
-  const [month, setMonth] = useState("Setembro");
   const months = [
     "Janeiro",
     "Fevereiro",
@@ -879,33 +866,44 @@ function HistoryPage({ transactions, onDelete }: { transactions: FinancialTransa
     "Novembro",
     "Dezembro",
   ];
-  const selectedMonth = months.indexOf(month) + 1;
-  const currentTransactions = transactions.filter((transaction) => Number(transaction.date.slice(5, 7)) === selectedMonth);
-  const revenue = currentTransactions.filter((item) => item.type === "receita").reduce((total, item) => total + item.amount, 0);
-  const expenses = currentTransactions.filter((item) => item.type === "despesa").reduce((total, item) => total + item.amount, 0);
+  const now = new Date();
+  const years = [...new Set([now.getFullYear(), ...transactions.map((transaction) => Number(transaction.date.slice(0, 4))).filter(Number.isFinite)])].sort((a, b) => b - a);
+  const [year, setYear] = useState(String(now.getFullYear()));
+  const [month, setMonth] = useState(String(now.getMonth() + 1).padStart(2, "0"));
+  const currentTransactions = transactions.filter((transaction) => transaction.date.startsWith(`${year}-${month}-`));
+  const revenue = currentTransactions.filter((item) => item.type === "receita" && item.status !== "pendente").reduce((total, item) => total + item.amount, 0);
+  const expenses = currentTransactions.filter((item) => item.type === "despesa" && item.status !== "pendente").reduce((total, item) => total + item.amount, 0);
+  const pending = currentTransactions.filter((item) => item.status === "pendente").reduce((total, item) => total + item.amount, 0);
   return (
     <>
       <PageHeader
         eyebrow="ARQUIVO"
         title="Histórico financeiro"
-        description="Uma visão organizada de cada mês do seu ano."
+        description="Consulte receitas, despesas e pendências de todos os meses registrados."
       />
+      <div className="filter-bar">
+        <span>Ano do histórico</span>
+        <Select value={year} onValueChange={setYear}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>{years.map((item) => <SelectItem key={item} value={String(item)}>{item}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
       <div className="month-grid">
-        {months.map((m) => (
+        {months.map((m, index) => (
           <button
-            key={m}
-            className={month === m ? "active" : ""}
-            onClick={() => setMonth(m)}
+            key={`${year}-${m}`}
+            className={month === String(index + 1).padStart(2, "0") ? "active" : ""}
+            onClick={() => setMonth(String(index + 1).padStart(2, "0"))}
           >
-            <small>2026</small>
+            <small>{year}</small>
             <strong>{m}</strong>
-            <span>{money(transactions.filter((transaction) => Number(transaction.date.slice(5, 7)) === months.indexOf(m) + 1).reduce((total, item) => total + (item.type === "receita" ? item.amount : -item.amount), 0))}</span>
+            <span>{money(transactions.filter((transaction) => transaction.date.startsWith(`${year}-${String(index + 1).padStart(2, "0")}-`)).reduce((total, item) => total + (item.type === "receita" ? item.amount : -item.amount), 0))}</span>
           </button>
         ))}
       </div>
       <div className="section-title history-title">
         <div>
-          <p>{month.toUpperCase()} DE 2026</p>
+          <p>{months[Number(month) - 1]?.toUpperCase()} DE {year}</p>
           <h2>Resumo do período</h2>
         </div>
       </div>
@@ -928,6 +926,13 @@ function HistoryPage({ transactions, onDelete }: { transactions: FinancialTransa
           value={money(revenue - expenses)}
           detail="Resultado consolidado"
           icon={TrendingUp}
+        />
+        <Stat
+          label="Em aberto"
+          value={money(pending)}
+          detail={`${currentTransactions.filter((item) => item.status === "pendente").length} pendente(s)`}
+          tone="gold"
+          icon={Clock3}
         />
       </div>
       <TransactionTable rows={toTableRows(currentTransactions)} onDelete={onDelete} />
@@ -1321,7 +1326,8 @@ function SettingsPage({
   };
   const clearTestData = async () => {
     const workspaceName = workspace === "business" ? "empresarial" : "pessoal";
-    if (!window.confirm(`Apagar permanentemente todos os lançamentos e comprovantes do ambiente ${workspaceName}${workspace === "business" ? ", além dos produtos e barbeiros salvos neste navegador" : ""}? Esta ação não pode ser desfeita.`)) return;
+    if (!window.confirm(`Zerar todos os dados financeiros do ambiente ${workspaceName}? Essa ação é permanente e não pode ser desfeita.`)) return;
+    if (window.prompt('Para confirmar a exclusão permanente, digite APAGAR:') !== "APAGAR") return;
     setResettingData(true);
     setResetError("");
     setResetMessage("");
@@ -1335,6 +1341,7 @@ function SettingsPage({
         window.localStorage.removeItem("blackfin_products_business_v1");
         window.localStorage.removeItem("blackfin_barbers_v1");
       }
+      window.localStorage.removeItem(`blackfin_notification_preferences_${workspace}_v1`);
       setResetMessage("Dados de teste removidos. Atualizando o ambiente...");
       window.setTimeout(() => window.location.reload(), 700);
     } catch (error) {
@@ -1395,8 +1402,8 @@ function SettingsPage({
           {section === "seguranca" && <>
             <div className="settings-security-note"><ShieldCheck /><div><strong>Ambiente {workspace === "business" ? "empresarial" : "pessoal"} ativo</strong><p>Para alterar login ou senha publicada, atualize as variáveis de ambiente na Vercel e faça um novo deploy.</p></div></div>
             <div className="settings-data-reset">
-              <div><strong>Limpar dados de teste</strong><p>Apaga lançamentos e comprovantes deste ambiente. No ambiente empresarial, também apaga produtos e barbeiros salvos neste navegador.</p></div>
-              <Button type="button" variant="outline" className="delete-barber" disabled={resettingData} onClick={() => void clearTestData()}><Trash2 />{resettingData ? "Limpando..." : "Apagar dados deste ambiente"}</Button>
+              <div><strong>Zerar dados deste ambiente</strong><p>Apaga permanentemente os lançamentos, contas e comprovantes deste ambiente. No empresarial, também remove produtos e barbeiros salvos neste navegador. Seu perfil e acesso permanecem ativos.</p></div>
+              <Button type="button" variant="outline" className="delete-barber" disabled={resettingData} onClick={() => void clearTestData()}><Trash2 />{resettingData ? "Apagando..." : "Zerar todos os dados"}</Button>
               {resetError && <p className="form-error">{resetError}</p>}
               {resetMessage && <p role="status">{resetMessage}</p>}
             </div>
@@ -1412,6 +1419,7 @@ type Product = {
   id: string;
   name: string;
   price: number;
+  quantity?: number;
   photo?: string;
 };
 
@@ -1421,6 +1429,7 @@ function ProductsPage() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [quantity, setQuantity] = useState("1");
   const [photo, setPhoto] = useState<string>();
   const [saveError, setSaveError] = useState("");
   useEffect(() => {
@@ -1462,11 +1471,16 @@ function ProductsPage() {
       setSaveError("Informe o nome e um valor válido para o produto.");
       return;
     }
-    const nextProducts = [{ id: crypto.randomUUID(), name: name.trim(), price: value, photo }, ...products];
+    const stock = Number(quantity);
+    if (!Number.isInteger(stock) || stock < 0) {
+      setSaveError("Informe uma quantidade inteira igual ou maior que zero.");
+      return;
+    }
+    const nextProducts = [{ id: crypto.randomUUID(), name: name.trim(), price: value, quantity: stock, photo }, ...products];
     try {
       window.localStorage.setItem("blackfin_products_business_v1", JSON.stringify(nextProducts));
       setProducts(nextProducts);
-      setName(""); setPrice(""); setPhoto(undefined); setSaveError(""); setOpen(false);
+      setName(""); setPrice(""); setQuantity("1"); setPhoto(undefined); setSaveError(""); setOpen(false);
     } catch {
       setSaveError("Não foi possível salvar. Remova a foto ou escolha uma imagem menor e tente novamente.");
     }
@@ -1488,15 +1502,16 @@ function ProductsPage() {
     <div className="product-grid">
       {products.map((product) => <article className="product-card" key={product.id}>
         <div className="product-photo">{product.photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={product.photo} alt={product.name} /> : <PackagePlus />}</div>
-        <div className="product-card-details"><div><small>PRODUTO</small><h3>{product.name}</h3><strong>{money(product.price)}</strong></div><Button type="button" variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir ${product.name}`} title="Excluir produto" onClick={() => deleteProduct(product)}><Trash2 /></Button></div>
+        <div className="product-card-details"><div><small>PRODUTO</small><h3>{product.name}</h3><strong>{money(product.price)}</strong><p>Estoque: {product.quantity ?? 0} {product.quantity === 1 ? "unidade" : "unidades"}</p></div><Button type="button" variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir ${product.name}`} title="Excluir produto" onClick={() => deleteProduct(product)}><Trash2 /></Button></div>
       </article>)}
       {products.length === 0 && <div className="empty-products"><PackagePlus /><strong>Nenhum produto cadastrado</strong><p>Adicione fotos e preços para organizar o catálogo da empresa.</p><Button className="gold-button" onClick={() => setOpen(true)}>Cadastrar produto</Button></div>}
     </div>
-    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) setSaveError(""); }}><DialogContent className="transaction-dialog"><DialogHeader><DialogTitle>Novo produto</DialogTitle><DialogDescription>Inclua a foto e o valor de venda do produto.</DialogDescription></DialogHeader><div className="review-form">
+    <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) setSaveError(""); }}><DialogContent className="transaction-dialog"><DialogHeader><DialogTitle>Novo produto</DialogTitle><DialogDescription>Inclua foto, valor de venda e quantidade inicial em estoque.</DialogDescription></DialogHeader><div className="review-form">
       <input ref={photoInput} hidden type="file" accept="image/*" onChange={(event) => selectPhoto(event.target.files?.[0])} />
       <button type="button" className="product-upload" onClick={() => photoInput.current?.click()}>{photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={photo} alt="Prévia do produto" /> : <><Upload /> Adicionar foto</>}</button>
       <label className="wide">Nome do produto<Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Pomada modeladora" /></label>
       <label className="wide">Valor de venda<Input value={price} onChange={(event) => setPrice(event.target.value)} inputMode="decimal" placeholder="R$ 0,00" /></label>
+      <label className="wide">Quantidade em estoque<Input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
       {saveError && <p className="form-error wide">{saveError}</p>}
       <Button className="gold-button wide" onClick={save}>Salvar produto</Button>
     </div></DialogContent></Dialog>
@@ -1528,8 +1543,8 @@ export function FeaturePage({ path, onNewTransaction, profile, onProfileChange, 
       return <TransactionsPage onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/comprovantes")
       return <ReceiptsPage onNew={onNewTransaction} workspace={workspace} />;
-    if (path === "/contas-pagar") return <AccountsPage onNew={onNewTransaction} />;
-    if (path === "/contas-receber") return <AccountsPage receivable onNew={onNewTransaction} />;
+    if (path === "/contas-pagar") return <AccountsPage onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
+    if (path === "/contas-receber") return <AccountsPage receivable onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/relatorios") return <ReportsPage profile={profile} workspace={workspace} transactions={transactions} />;
     if (path === "/historico") return <HistoryPage transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/barbeiros") return <PeoplePage />;
