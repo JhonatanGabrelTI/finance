@@ -44,6 +44,7 @@ const testDataKeys = [
   "blackfin_transactions_personal_v2",
   "blackfin_barbers_v1",
   "blackfin_products_business_v1",
+  "blackfin_products_personal_v1",
   "blackfin_notification_preferences_business_v1",
   "blackfin_notification_preferences_personal_v1",
 ];

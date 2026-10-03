@@ -226,7 +226,7 @@ function TransactionTable({
                 {tx.type === "Receita" ? "+ " : "− "}
                 {money(tx.value)}
               </TableCell>
-              {onDelete && <TableCell className="text-right"><Button variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir ${tx.description}`} title="Excluir lançamento" onClick={() => onDelete(tx.id)}><Trash2 /></Button></TableCell>}
+              {onDelete && <TableCell className="text-right"><Button type="button" variant="ghost" size="sm" className="delete-transaction" aria-label={`Retirar ${tx.description}`} title="Retirar lançamento" onClick={() => onDelete(tx.id)}><Trash2 /> Retirar</Button></TableCell>}
             </TableRow>
           ))}
         </TableBody>
@@ -428,7 +428,7 @@ function ReceiptsPage({ onNew, workspace }: { onNew: () => void; workspace: Work
             if (!window.confirm(`Remover o arquivo “${file.name}” selecionado?`)) return;
             setFile(null);
             setConfirmed(false);
-          }}><Trash2 /> Remover arquivo</Button>}
+          }}><Trash2 /> Retirar arquivo</Button>}
         </div>
         <div className="data-card padded receipt-review">
           <div className="section-title">
@@ -494,6 +494,11 @@ function ReceiptsPage({ onNew, workspace }: { onNew: () => void; workspace: Work
               >
                 Enviar outro
               </Button>
+              <Button type="button" variant="ghost" className="delete-transaction" onClick={() => {
+                if (!window.confirm(`Retirar o comprovante “${file.name}”?`)) return;
+                setFile(null);
+                setConfirmed(false);
+              }}><Trash2 /> Retirar comprovante</Button>
             </div>
           ) : (
             <div className="empty-review">
@@ -1130,12 +1135,12 @@ function PeoplePage({ commissions = false }: { commissions?: boolean }) {
                 <div className="commission-row" key={service.id}>
                   <span>{new Date(`${service.date}T00:00:00`).toLocaleDateString("pt-BR")}</span>
                   <span>Serviço {money(service.amount)} · Comissão {money(service.commission)}</span>
-                  <Button type="button" variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir serviço de ${name}`} title="Excluir serviço" onClick={() => deleteService({ initial, name, pct, sales, services }, service)}><Trash2 /></Button>
+                  <Button type="button" variant="ghost" size="sm" className="delete-transaction" aria-label={`Retirar serviço de ${name}`} title="Retirar serviço" onClick={() => deleteService({ initial, name, pct, sales, services }, service)}><Trash2 /> Retirar</Button>
                 </div>
               ))}
             </div> : commissions && <p className="commission-empty">Nenhum serviço lançado para este barbeiro.</p>)}
             <Button type="button" variant="outline" size="sm" className="delete-barber" onClick={() => deleteBarber({ initial, name, pct, sales, services })}>
-                <Trash2 /> Excluir barbeiro
+                <Trash2 /> Retirar barbeiro
             </Button>
           </article>
         ))}
@@ -1336,6 +1341,7 @@ function SettingsPage({
       const result = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Não foi possível limpar os dados.");
       window.localStorage.removeItem(`blackfin_transactions_${workspace}_v2`);
+      window.localStorage.removeItem(`blackfin_products_${workspace}_v1`);
       if (workspace === "business") {
         window.localStorage.removeItem("blackfin_transactions_v1");
         window.localStorage.removeItem("blackfin_products_business_v1");
@@ -1423,7 +1429,8 @@ type Product = {
   photo?: string;
 };
 
-function ProductsPage() {
+function ProductsPage({ workspace }: { workspace: Workspace }) {
+  const productsKey = `blackfin_products_${workspace}_v1`;
   const photoInput = useRef<HTMLInputElement>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [open, setOpen] = useState(false);
@@ -1435,14 +1442,15 @@ function ProductsPage() {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       try {
-        const saved = window.localStorage.getItem("blackfin_products_business_v1");
+        const saved = window.localStorage.getItem(productsKey) ??
+          (workspace === "business" ? window.localStorage.getItem("blackfin_products_business_v1") : null);
         if (saved) setProducts(JSON.parse(saved) as Product[]);
       } catch {
-        window.localStorage.removeItem("blackfin_products_business_v1");
+        window.localStorage.removeItem(productsKey);
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [productsKey, workspace]);
   const selectPhoto = (file?: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
@@ -1478,7 +1486,7 @@ function ProductsPage() {
     }
     const nextProducts = [{ id: crypto.randomUUID(), name: name.trim(), price: value, quantity: stock, photo }, ...products];
     try {
-      window.localStorage.setItem("blackfin_products_business_v1", JSON.stringify(nextProducts));
+      window.localStorage.setItem(productsKey, JSON.stringify(nextProducts));
       setProducts(nextProducts);
       setName(""); setPrice(""); setQuantity("1"); setPhoto(undefined); setSaveError(""); setOpen(false);
     } catch {
@@ -1489,7 +1497,7 @@ function ProductsPage() {
     if (!window.confirm(`Excluir o produto “${product.name}”?`)) return;
     const nextProducts = products.filter((item) => item.id !== product.id);
     try {
-      window.localStorage.setItem("blackfin_products_business_v1", JSON.stringify(nextProducts));
+      window.localStorage.setItem(productsKey, JSON.stringify(nextProducts));
       setProducts(nextProducts);
       setSaveError("");
     } catch {
@@ -1497,18 +1505,19 @@ function ProductsPage() {
     }
   };
   return <>
-    <PageHeader eyebrow="CATÁLOGO EMPRESARIAL" title="Produtos" description="Cadastre produtos da empresa com foto e preço. Este catálogo não aparece no ambiente pessoal." action={<Button className="gold-button" onClick={() => setOpen(true)}><PackagePlus /> Novo produto</Button>} />
+    <PageHeader eyebrow={workspace === "business" ? "CATÁLOGO EMPRESARIAL" : "ORGANIZAÇÃO PESSOAL"} title="Produtos" description={workspace === "business" ? "Cadastre produtos da empresa com foto, preço e estoque." : "Organize seus produtos pessoais com foto, preço e estoque."} action={<Button className="gold-button" onClick={() => setOpen(true)}><PackagePlus /> Novo produto</Button>} />
     {saveError && !open && <p className="form-error">{saveError}</p>}
     <div className="product-grid">
       {products.map((product) => <article className="product-card" key={product.id}>
         <div className="product-photo">{product.photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={product.photo} alt={product.name} /> : <PackagePlus />}</div>
-        <div className="product-card-details"><div><small>PRODUTO</small><h3>{product.name}</h3><strong>{money(product.price)}</strong><p>Estoque: {product.quantity ?? 0} {product.quantity === 1 ? "unidade" : "unidades"}</p></div><Button type="button" variant="ghost" size="icon" className="delete-transaction" aria-label={`Excluir ${product.name}`} title="Excluir produto" onClick={() => deleteProduct(product)}><Trash2 /></Button></div>
+        <div className="product-card-details"><div><small>PRODUTO</small><h3>{product.name}</h3><strong>{money(product.price)}</strong><p>Estoque: {product.quantity ?? 0} {product.quantity === 1 ? "unidade" : "unidades"}</p></div><Button type="button" variant="ghost" size="sm" className="delete-transaction" aria-label={`Retirar ${product.name}`} title="Retirar produto" onClick={() => deleteProduct(product)}><Trash2 /> Retirar</Button></div>
       </article>)}
       {products.length === 0 && <div className="empty-products"><PackagePlus /><strong>Nenhum produto cadastrado</strong><p>Adicione fotos e preços para organizar o catálogo da empresa.</p><Button className="gold-button" onClick={() => setOpen(true)}>Cadastrar produto</Button></div>}
     </div>
     <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (value) setSaveError(""); }}><DialogContent className="transaction-dialog"><DialogHeader><DialogTitle>Novo produto</DialogTitle><DialogDescription>Inclua foto, valor de venda e quantidade inicial em estoque.</DialogDescription></DialogHeader><div className="review-form">
       <input ref={photoInput} hidden type="file" accept="image/*" onChange={(event) => selectPhoto(event.target.files?.[0])} />
       <button type="button" className="product-upload" onClick={() => photoInput.current?.click()}>{photo ? <img /* eslint-disable-line @next/next/no-img-element -- the photo is an in-browser preview */ src={photo} alt="Prévia do produto" /> : <><Upload /> Adicionar foto</>}</button>
+      {photo && <Button type="button" variant="ghost" className="delete-transaction wide" onClick={() => { setPhoto(undefined); if (photoInput.current) photoInput.current.value = ""; }}><Trash2 /> Retirar foto</Button>}
       <label className="wide">Nome do produto<Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Pomada modeladora" /></label>
       <label className="wide">Valor de venda<Input value={price} onChange={(event) => setPrice(event.target.value)} inputMode="decimal" placeholder="R$ 0,00" /></label>
       <label className="wide">Quantidade em estoque<Input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
@@ -1531,14 +1540,14 @@ function RestrictedPage({ workspace }: { workspace: Workspace }) {
 
 export function FeaturePage({ path, onNewTransaction, profile, onProfileChange, workspace, transactions, onDeleteTransaction }: PageProps & { onDeleteTransaction: (id: string) => void }) {
   const content = useMemo(() => {
-    const businessOnly = ["/financeiro/empresarial", "/produtos", "/barbeiros", "/comissoes"];
+    const businessOnly = ["/financeiro/empresarial", "/barbeiros", "/comissoes"];
     if (workspace === "personal" && businessOnly.includes(path)) return <RestrictedPage workspace={workspace} />;
     if (workspace === "business" && path === "/financeiro/pessoal") return <RestrictedPage workspace={workspace} />;
     if (path === "/financeiro/pessoal")
       return <FinancePage onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/financeiro/empresarial")
       return <FinancePage business onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
-    if (path === "/produtos" && workspace === "business") return <ProductsPage />;
+    if (path === "/produtos") return <ProductsPage workspace={workspace} />;
     if (path === "/movimentacoes")
       return <TransactionsPage onNew={onNewTransaction} transactions={transactions} onDelete={onDeleteTransaction} />;
     if (path === "/comprovantes")

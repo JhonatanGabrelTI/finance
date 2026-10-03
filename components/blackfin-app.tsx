@@ -24,6 +24,7 @@ import {
   Settings,
   Sparkles,
   TrendingUp,
+  Trash2,
   UsersRound,
   WalletCards,
 } from "lucide-react";
@@ -89,6 +90,7 @@ const businessNav = [
 const personalNav = [
   ["Dashboard", Gauge, "/dashboard"],
   ["Meu financeiro", WalletCards, "/financeiro/pessoal"],
+  ["Produtos", ReceiptText, "/produtos"],
   ["Movimentações", CreditCard, "/movimentacoes"],
   ["Comprovantes", ReceiptText, "/comprovantes"],
   ["Contas a pagar", CalendarClock, "/contas-pagar"],
@@ -880,8 +882,9 @@ function BlackfinWorkspace({
                       value: `${item.type === "receita" ? "+" : "−"} ${item.amount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
                       positive: item.type === "receita",
                       status: item.status === "pendente" ? "Pendente" : "Pago",
+                      removable: true,
                     })),
-                    ...transactions.map((item) => ({ ...item, id: item.title })),
+                    ...transactions.map((item) => ({ ...item, id: item.title, removable: false })),
                   ]
                     .slice(0, 6)
                     .map((tx) => (
@@ -911,7 +914,7 @@ function BlackfinWorkspace({
                           {tx.value}
                         </TableCell>
                         <TableCell>
-                          {tx.id && <button aria-label={`Excluir ${tx.title}`} title="Excluir lançamento" className="delete-transaction" onClick={() => deleteTransaction(tx.id)}><MoreHorizontal /></button>}
+                          {tx.removable && <Button type="button" variant="ghost" size="sm" aria-label={`Retirar ${tx.title}`} title="Retirar lançamento" className="delete-transaction" onClick={() => deleteTransaction(tx.id)}><Trash2 /> Retirar</Button>}
                         </TableCell>
                       </TableRow>
                     ))}
